@@ -40,6 +40,11 @@ button{cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visi
 table{border-collapse:collapse;width:100%;font-size:15px}th,td{padding:8px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 th{font-weight:500;color:var(--mut);font-size:13px}td.n,th.n{text-align:right}
 tr.edge td{background:var(--accs)}tr.edge td:first-child{box-shadow:inset 3px 0 var(--acc)}
+/* ระดับ edge Yes (P − ask) ตรงกับไอคอนใน Telegram: 🟢🟢 ≥+10pp · 🟢 +5..+10 · 🟡 −5..+5 · 🔴 −10..−5 · 🔴🔴 ≤−10 */
+tr.lv2 td{background:light-dark(#b9e4c3,#1d4a2a)}tr.lv1 td{background:light-dark(#e1f3e5,#16351f)}tr.lv0 td{background:light-dark(#fbf2c9,#363015)}
+tr.lvm1 td{background:light-dark(#fbe1de,#3b1e1c)}tr.lvm2 td{background:light-dark(#f2b8b2,#572220)}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:baseline;border:1px solid var(--line)}
+.sw.lv2{background:#1e8e3e}.sw.lv1{background:#7cc68d}.sw.lv0{background:#e6c440}.sw.lvm1{background:#ec8f86}.sw.lvm2{background:#c5352b}
 .pos{color:var(--acc);font-weight:600}.neg{color:var(--mut)}
 .chips{display:flex;flex-wrap:wrap;gap:8px}.chips label{display:flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:0 12px;min-height:44px;background:var(--card);font-size:14px;cursor:pointer}
 .chips input{min-height:0;padding:0;width:18px;height:18px;flex:none;accent-color:var(--acc)}
@@ -84,6 +89,7 @@ html{scroll-padding-top:56px}
   </div>
   <div id="hint"></div>
   <div class="scroll"><table class="stack" id="tblB"></table></div>
+  <p class="sm mut">สีแถว = edge ฝั่ง Yes (P โมเดล − ask): <span class="sw lv2"></span>≥ +10pp · <span class="sw lv1"></span>+5..+10 · <span class="sw lv0"></span>−5..+5 · <span class="sw lvm1"></span>−10..−5 · <span class="sw lvm2"></span>≤ −10pp (Yes แพงเกิน → พิจารณา No) · ระบายเฉพาะแถวที่ P หรือราคา ≥ 3%</p>
   <p class="sm mut">edge = ความน่าจะเป็นของโมเดล − ราคาที่ซื้อได้จริง (หน่วย pp – percentage points / จุดเปอร์เซ็นต์) · EV (Expected Value – ค่าคาดหวัง) ต่อเงิน $1 · ไม่ใช่คำแนะนำทางการเงิน: โมเดลไม่รู้ข่าวที่ยังไม่เกิด</p>
 </section>
 
@@ -219,10 +225,12 @@ function nowcast(){const m=curMarket();if(!m)return;const h=cache.h,R=cache.R,no
   const thr=S.set.thr/100;
   $('#tblB').innerHTML=`<thead><tr><th>Bucket</th><th class="n">โมเดล P</th><th class="n">ซื้อ Yes (ask)</th><th class="n">ซื้อ No (1−bid)</th><th class="n">edge ดีที่สุด</th><th class="n">EV/$1</th><th class="n">Volume</th></tr></thead><tbody>`+
    B.filter(b=>b.pm>.001||(b.mid??0)>.01||b===curB).map(b=>{const ask=b.ask??b.mid,noP=b.bid!=null?1-b.bid:(1-(b.mid??0));const eY=ask!=null?b.pm-ask:-1,eN=noP!=null?(1-b.pm)-noP:-1;const yes=eY>=eN,e=yes?eY:eN,ev=yes?(ask>0?b.pm/ask-1:0):(noP>0?(1-b.pm)/noP-1:0);
-    return`<tr class="${e>=thr?'edge':''}"><td><b>${esc(b.t)}</b>${b.hi<m.cur?' <span class="mut sm">(ผ่านแล้ว)</span>':''}</td><td class="n">${pct(b.pm)}</td><td class="n">${c(ask)}</td><td class="n">${c(noP)}</td><td class="n ${e>=thr?'pos':'neg'}">${e>-1?(yes?'Yes ':'No ')+(e*100>0?'+':'')+(e*100).toFixed(1)+'pp':'—'}</td><td class="n ${ev>0?'pos':'neg'}">${e>-1?(ev>0?'+':'')+ev.toFixed(2):'—'}</td><td class="n">${b.vol?'$'+Math.round(b.vol).toLocaleString():''}</td></tr>`}).join('')+'</tbody>';
+    const lv=(b.pm>=.03||(ask??0)>=.03)&&ask!=null?edgeLv(b.pm-ask):null,lc=lv==null?'':'lv'+String(lv).replace('-','m');
+    return`<tr class="${e>=thr?'edge':''} ${lc}" title="${lv==null?'':'edge Yes (P − ask) '+((b.pm-ask)*100).toFixed(1)+'pp'}"><td>${lc?`<span class="sw ${lc}"></span>`:''}<b>${esc(b.t)}</b>${b.hi<m.cur?' <span class="mut sm">(ผ่านแล้ว)</span>':''}</td><td class="n">${pct(b.pm)}</td><td class="n">${c(ask)}</td><td class="n">${c(noP)}</td><td class="n ${e>=thr?'pos':'neg'}">${e>-1?(yes?'Yes ':'No ')+(e*100>0?'+':'')+(e*100).toFixed(1)+'pp':'—'}</td><td class="n ${ev>0?'pos':'neg'}">${e>-1?(ev>0?'+':'')+ev.toFixed(2):'—'}</td><td class="n">${b.vol?'$'+Math.round(b.vol).toLocaleString():''}</td></tr>`}).join('')+'</tbody>';
   const sug=SNAP.upcoming.concat(S.launches).filter(u=>{const t=Date.parse(u.d);return t>=now-DAY&&t<=m.e}).filter(u=>u.type);
   $('#hint').innerHTML=(sug.length?`<div class="note">ในช่วงที่เหลือของตลาดนี้มี: ${sug.map(u=>`<b>${esc(u.t)}</b> (${esc(u.type)})`).join(' · ')} → พิจารณาติ๊กปรับด้านบน</div>`:'')+(!S.live?`<div class="note">โหมด SNAPSHOT: ข้อมูลและราคา ณ ${fICT.format(new Date(Date.parse(SNAP.snapTime)))} (เวลาไทย) — เปิดหน้านี้บน GitHub Pages เพื่อดึงข้อมูลสด</div>`:'');
   drawScale()}
+const edgeLv=e=>e>=.10?2:e>=.05?1:e>-.05?0:e>-.10?-1:-2;
 const pct=p=>(p*100).toFixed(p<.1?1:0)+'%';const c=v=>v==null?'—':(v*100).toFixed(v<.1?1:0)+'¢';
 function probAtLeast(x,k){let c=0;for(let i=0;i<x.length;i++)if(x[i]>=k)c++;return c/x.length}
 function fmtLeft(ms){const d=Math.floor(ms/DAY),h=Math.floor(ms%DAY/HR),m=Math.floor(ms%HR/6e4);return(d?d+'ว ':'')+h+'ช '+String(m).padStart(2,'0')+'น'}

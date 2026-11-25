@@ -5,8 +5,8 @@
 //    every post line shows latency: posted → imported by xtracker → sent
 // Body {"test":true} → Telegram test · {"backfill":{"from":ISO,"to":ISO}} → upsert one window of posts (no alerts)
 import {
-  bucketLine, esc, fetchMarkets, fmtLeft, fmtMin, getJSON, HR, internalAuth, iso, json, loadState, Market, MIN,
-  officialCount, pp, saveState, sb, shortTitle, telegram, th, XT, cents,
+  cents, esc, fetchMarkets, fmtLeft, fmtMin, getJSON, HR, internalAuth, iso, json, loadState, makeDescriber, Market, MIN,
+  pp, saveState, sb, shortTitle, telegram, th, XT,
 } from "../_shared/common.ts";
 
 const SILENCE_MS = 3 * HR;       // (a)
@@ -97,11 +97,7 @@ Deno.serve(async (req) => {
     // 2) markets + quotes (~every 60 s) → price-jump detection (no per-minute price storage)
     let markets: Market[] = st.markets ?? [];
     const msgs: string[] = [];
-    const counts = new Map<string, number | null>();
-    const count = async (m: Market) => {
-      if (!counts.has(m.id)) counts.set(m.id, m.s <= now ? await officialCount(m.id) : 0);
-      return counts.get(m.id)!;
-    };
+    const describe = makeDescriber(now);  // official count + model P/edge per market
     if (!markets.length || !st.last_market_poll || now - st.last_market_poll >= MARKET_EVERY_MS) {
       try {
         markets = await fetchMarkets(now);
@@ -112,7 +108,7 @@ Deno.serve(async (req) => {
           const hs = jp.hits.filter((h) => h.m === m);
           msgs.push(`⚡ <b>ราคาขยับแรง</b> · ${esc(shortTitle(m.title))}\n` +
             hs.map((h) => `• <b>${esc(h.t)}</b>: ${(h.from * 100).toFixed(0)}% → ${(h.to * 100).toFixed(0)}% (${pp(h.to - h.from)} ใน ${Math.max(1, Math.round(h.ago / MIN))} นาที) · bid ${cents(h.bid)} / ask ${cents(h.ask)}`).join("\n") +
-            `\n${bucketLine(m, await count(m))}\nเหลือ ${fmtLeft(m.e - now)}`);
+            `\n${await describe(m)}\nเหลือ ${fmtLeft(m.e - now)}`);
         }
         out.jumps = jp.hits.length;
       } catch (e) { out.market_error = String(e); }
@@ -131,7 +127,7 @@ Deno.serve(async (req) => {
         if (t - prev >= SILENCE_MS) {
           const m = open[0];
           msgs.push(`🔔 <b>Elon กลับมาโพสต์</b> หลังเงียบ ${((t - prev) / HR).toFixed(1)} ชม.\n${postLine(p, Date.now())}` +
-            (m ? `\n\n📊 ${esc(shortTitle(m.title))}\n${bucketLine(m, await count(m))}\nเหลือ ${fmtLeft(m.e - now)} (ปิด ${th(m.e + 1000)} เวลาไทย)` : ""));
+            (m ? `\n\n📊 ${esc(shortTitle(m.title))}\n${await describe(m)}\nเหลือ ${fmtLeft(m.e - now)} (ปิด ${th(m.e + 1000)} เวลาไทย)` : ""));
           break;
         }
         prev = Math.max(prev, t);
@@ -143,7 +139,7 @@ Deno.serve(async (req) => {
         const sentAt = Date.now();
         msgs.push(`⏱ <b>${esc(shortTitle(m.title))}</b> เหลือ ${fmtLeft(m.e - now)}\nโพสต์ใหม่ ${ps.length}:\n` +
           ps.slice(-5).map((p) => postLine(p, sentAt)).join("\n") + (ps.length > 5 ? `\n…และอีก ${ps.length - 5}` : "") +
-          `\n${bucketLine(m, await count(m))}`);
+          `\n${await describe(m)}`);
       }
       for (const p of toAlert) alerted.add(p.id);
       patch.alerted_ids = [...alerted].slice(-200);

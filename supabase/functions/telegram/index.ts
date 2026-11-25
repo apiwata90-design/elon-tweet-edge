@@ -1,7 +1,7 @@
 // Edge Function "telegram" (E) — Telegram webhook.
 // Telegram calls it with header X-Telegram-Bot-Api-Secret-Token (Vault: telegram_webhook_secret).
 // Replies only to chat 1893239479. Commands: /status (also /start, /help).
-// Internal calls (x-poll-secret, e.g. from SQL): {"setup":true} → setWebhook · {"info":true} → getWebhookInfo ·
+// Internal calls (x-poll-secret, e.g. from SQL): {"setup":true} → setWebhook · {"info":true} → getWebhookInfo · {"preview":true} → /status text ·
 //                                               a Telegram-shaped update {"message":{…}} → handled as if from Telegram (testing)
 import { buildStatus, internalAuth, json, sb, telegram } from "../_shared/common.ts";
 
@@ -38,6 +38,7 @@ Deno.serve(async (req) => {
       });
       return json({ ok: r.ok, description: r.description });
     }
+    if (internal && body?.preview) return json({ ok: true, text: await buildStatus(Date.now()) });  // /status text, not sent
     if (internal && body?.info) {
       const r = await tgApi("getWebhookInfo", {});
       const i = r.result ?? {};

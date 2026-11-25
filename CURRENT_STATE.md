@@ -1,6 +1,13 @@
 # CURRENT_STATE — Elon Tweet Edge
 
-_อัปเดตล่าสุด: 2026-11-25 · เฟส 1 เสร็จ (health, price jump, latency, /status, storage) · เฟส 2–3 ยังไม่เริ่ม_
+_อัปเดตล่าสุด: 2026-11-25 · เฟส 1 เสร็จ · เฟส 2 เสร็จ (โมเดลฝั่ง server + สี + backtest) · เฟส 3 รอ user ดูผล backtest_
+
+## ผล backtest (เฟส 2) — รายละเอียดใน [reports/backtest_2026-11-25.md](reports/backtest_2026-11-25.md)
+- 224 ตลาดที่ปิดแล้ว (48h 133, 7d 91) · train = ปิด ม.ค.–ส.ค. (164) · test = ปิด ก.ย.–พ.ย. (60)
+- checkpoint ที่เลือก: **2x = T−24.5h, T−17.5h** (ชุดดีสุดจาก train ชนะสมมติฐานบน test +$60 vs +$33) · **3x = T−16h, T−7h, T−2.5h** (สมมติฐาน เพราะชุดดีสุดจาก train แพ้บน test: −$77 vs +$185)
+- test ($10/ไม้): 2x +$60 (90% CI −106…+236) · 3x +$185 (CI +10…+371) · baseline avg7d +$68 (CI −231…+418)
+- test มีแค่ 60 ตลาด → ส่วนต่างส่วนใหญ่ยังอยู่ใน noise · มีแค่ 3x ที่ CI ทั้งช่วงเป็นบวก
+- บันทึกใน DB แล้ว (mode='backtest'): paper_decisions 1,914 · paper_positions 624 · price_cache 19,380 (เฉพาะราคาที่ agent ใช้ตัดสินใจจริง)
 
 ## ใช้งานได้แล้ว
 | ส่วน | ที่อยู่ | สถานะ |
@@ -37,7 +44,12 @@ GitHub Action ชม.ละครั้ง ─▶ data/hourly.json, news.json, l
 | ⚠️ / ✅ ระบบ | ดูข้อ health | `state.health.down` |
 
 - ทุกบรรทัดโพสต์มี latency: `⏱ นำเข้า +x นาที` (createdAt → importedAt ของ xtracker) · `ส่ง +y นาที` (createdAt → เวลาส่ง)
-- P โมเดลและไอคอนสีใน ⚡/⏱ จะเพิ่มในเฟส 2
+- ข้อความ 🔔 ⏱ ⚡ และ /status แสดงผลโมเดล (เฟส 2):
+  - ยอด · bucket ปัจจุบัน (P จบในนี้) · "ต้องได้อีก N" เฉพาะเมื่อ P(ถึง bucket ถัดไป) ≥ 2%
+  - ทุก bucket ที่ P > 3% แสดงแบบ `🟢 65-89 · โมเดล 97% · ask 91¢ · edge +6pp`
+  - ไอคอนตาม edge Yes = P − ask: 🟢🟢 ≥ +10pp · 🟢 +5..+10 · 🟡 −5..+5 · 🔴 −10..−5 · 🔴🔴 ≤ −10
+- โมเดลฝั่ง server: [supabase/functions/_shared/model.ts](supabase/functions/_shared/model.ts) (analog 60 วัน, w = 0.5, 20,000 sims) ใช้ร่วมกับ backtest · ผลตรงกับ `simulate()` ใน template ทุก sim (ทดสอบด้วย seed เดียวกัน) · input = `hourly_counts()` 100 วันจากตาราง posts
+- หน้าเว็บ: แถวในตาราง bucket ระบายสีตามระดับเดียวกัน (เฉพาะแถวที่ P หรือราคา ≥ 3%) · โมเดลของหน้าเว็บยังอยู่ใน template.html (อัลกอริทึมเดียวกัน)
 
 ### Health check (A)
 - ยอดไม่ตรงต้องเกิดซ้ำ 2 รอบติดกัน (10 นาที) ถึงจะนับเป็นปัญหา เพื่อกันกรณีโพสต์ที่เพิ่งเข้ามาฝั่งใดฝั่งหนึ่งก่อน
@@ -57,9 +69,9 @@ GitHub Action ชม.ละครั้ง ─▶ data/hourly.json, news.json, l
 - หน้าเว็บมีแค่ publishable key
 
 ## ไฟล์
-- `supabase/functions/_shared/common.ts`: helper ร่วม (state, telegram, markets, /status)
+- `supabase/functions/_shared/common.ts`: helper ร่วม (state, telegram, markets, /status, ข้อความโมเดล) · `model.ts` โมเดล · `slug.ts`
 - `supabase/functions/poll|health|telegram/index.ts`
-- `supabase/migrations/`: `…140000_init` (ตาราง/RLS/Realtime) · `…140100_cron` (Vault/cron poll) · `…160000_phase1` (price_cache, webhook secret, `private.invoke_fn`, cron health, cleanup 2 วัน)
+- `supabase/migrations/`: `…140000_init` (ตาราง/RLS/Realtime) · `…140100_cron` (Vault/cron poll) · `…160000_phase1` (price_cache, webhook secret, `private.invoke_fn`, cron health, cleanup 2 วัน) · `20261126090000_phase2` (`hourly_counts()`, paper_decisions, paper_positions)
 - `template.html` → `python build.py` → `index.html` (build.py ดึง SNAP จาก index.html เดิม)
 
 ## วิธีเช็ก
@@ -90,6 +102,17 @@ npx supabase db push --remote                                # เมื่อ�
 python build.py                                              # เมื่อแก้ template.html
 ```
 
+## Backtest
+```bash
+deno run -A scripts/backtest.ts            # รายงาน → reports/backtest_<วันที่ ICT>.md (แคชราคา/โมเดลใน .cache/backtest/, gitignored)
+deno run -A scripts/backtest.ts --write    # + สร้าง .cache/backtest/sql/*.sql (paper_* mode='backtest', price_cache)
+for f in .cache/backtest/sql/*.sql; do npx supabase db query --remote --yes -f "$f"; done
+```
+- อ่านโพสต์ด้วย publishable key (อ่านอย่างเดียว) · เขียน DB ผ่าน `supabase db query` (ไม่ต้องใช้ service key)
+- รันซ้ำแล้ว `--write` จะเพิ่มแถว backtest ซ้ำ → ต้องลบ `mode='backtest'` เดิมก่อน (ถามก่อนลบ)
+- ตลาดที่ไม่มี marketLink หา slug จากชื่อ ([_shared/slug.ts](supabase/functions/_shared/slug.ts) ใช้ทั้งใน backtest และ live)
+
 ## ค้าง / ถัดไป
-- เฟส 2: โมเดลฝั่ง server (shared module) + ไอคอนสี + backtest G2/G3 → รอ user สั่งเริ่ม
-- เฟส 3: paper trading live (หลัง user ดูผล G3)
+- ข้อ D (latency) ยังไม่เห็นข้อความจริงจาก poll ตัวใหม่ เพราะยังไม่มีโพสต์ใหม่ขณะที่ตลาดเหลือ < 6 ชม. → เช็กที่ข้อความ ⏱/🔔 ถัดไป
+- เฟส 3: paper trading live (agent 2x = T−24.5h/T−17.5h, 3x = T−16h/T−7h/T−2.5h, avg7d) → **รอ user ดูผล backtest ก่อน**
+- GitHub Action `hourly-data`: ยังไม่เห็นรอบที่รันตาม schedule (มีแต่รอบที่กดรันเอง) → เช็กอีกครั้ง
