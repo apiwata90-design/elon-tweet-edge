@@ -18,6 +18,13 @@
 
 เบราว์เซอร์จำข้อมูลไว้ใน localStorage จึงดึงเฉพาะโพสต์ใหม่ ไม่ต้องโหลด 1 ปีทุกครั้ง
 
+**Backend Supabase (ระดับวินาที):** Edge Function `poll` ถูกเรียกทุก 30 วินาทีด้วย pg_cron
+- เก็บโพสต์ลงตาราง `posts` → หน้าเว็บได้รับทันทีผ่าน Realtime (มีปุ่ม 🔔 แจ้งเตือนพร้อมเสียง)
+- เก็บประวัติราคาลงตาราง `prices`
+- แจ้งเตือน Telegram เมื่อกลับมาโพสต์หลังเงียบ ≥ 3 ชม. หรือมีโพสต์ใหม่ขณะที่ตลาดเหลือ < 6 ชม.
+- ถ้า Supabase ใช้ไม่ได้ หน้าเว็บจะดึง xtracker ตรงแบบเดิม
+- รายละเอียดและวิธีเช็กอยู่ใน [CURRENT_STATE.md](CURRENT_STATE.md)
+
 ## ติดตั้งบน GitHub Pages (ประมาณ 5 นาที)
 1. สร้าง repository ใหม่บน GitHub (Public เพื่อใช้ Pages ฟรี)
 2. อัปโหลดไฟล์ทั้งหมดในโฟลเดอร์นี้ (รวมโฟลเดอร์ `.github`, `data`, `scripts`) — ลากวางในหน้า "Add file → Upload files" ได้เลย
@@ -31,7 +38,8 @@
 - `index.html` — หน้าเว็บทั้งหมด (มีข้อมูล snapshot ฝังไว้ ใช้ได้แม้ API ล่ม)
 - `data/hourly.json` — จำนวนโพสต์รายชั่วโมงตั้งแต่ 1 พ.ย. 2025 (UTC)
 - `scripts/update.py`, `.github/workflows/update.yml` — ตัวอัปเดตรายชั่วโมง
-- `template.html`, `build.py` — ต้นฉบับสำหรับแก้ไขแล้ว build ใหม่ (ไม่จำเป็นต่อการใช้งาน)
+- `template.html`, `build.py` — ต้นฉบับสำหรับแก้ไข แล้วรัน `python build.py` (ดึง SNAP จาก index.html เดิม)
+- `supabase/` — migrations, Edge Function `poll`, config
 
 ## ข้อจำกัด
 - โมเดลใช้รูปแบบในอดีต (60 วัน) + แนวโน้ม 7 วัน — ไม่รู้ข่าวที่ยังไม่เกิด ให้ปรับด้วยปุ่มอีเวนต์
