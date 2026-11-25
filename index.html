@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Elon Tweet Edge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&family=Geist+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: a trading-desk instrument — terse, numeric, decision first.
+   IDEA: a precision gauge: one long bucket scale with the market's price needle vs. the model's reading.
+   PICTURE: bucket columns (model probability) with orange price ticks; current count + projection on the scale.
+   COLOUR and TYPE: aluminium ground, black ink, orange #ff4f00 pointer; night #141517. Geist + IBM Plex Sans Thai.
+   LAYOUT: readout row, then the scale, then the bucket table; analysis bands below. */
+:root{color-scheme:light dark;--bg:light-dark(#e9eaec,#141517);--card:light-dark(#f7f7f8,#1c1d21);--ink:light-dark(#121314,#ecedef);--mut:light-dark(#62656b,#9a9da4);--line:light-dark(#cfd1d5,#2c2e33);--acc:#ff4f00;--accs:light-dark(#ffe4d6,#3a1f12);--good:light-dark(#0b6b4a,#5fd3a5)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Geist,"IBM Plex Sans Thai",system-ui,sans-serif;overflow-x:clip}
+.band{padding:clamp(20px,3vw,40px) max(4vw,14px);max-width:1280px;margin:0 auto}
+h1{font-size:clamp(26px,4vw,40px);line-height:1.05;margin:0;font-weight:700;text-wrap:balance}
+h2{font-size:clamp(21px,2.6vw,28px);line-height:1.1;margin:0 0 6px;font-weight:700;text-wrap:balance}
+h3{font-size:16px;margin:18px 0 6px}
+p{margin:6px 0}.mut{color:var(--mut)}.sm{font-size:13px}
+.num,td.n,th.n{font-family:"Geist Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:end;justify-content:space-between;border-bottom:2px solid var(--ink)}
+.status{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mut);display:inline-block}.dot.live{background:var(--acc);animation:p 2s infinite}
+@keyframes p{50%{opacity:.35}}@media(prefers-reduced-motion:reduce){.dot.live{animation:none}}
+select,input,button{font:inherit;font-size:16px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;min-height:44px;padding:0 10px}
+button{cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}.tabs button{flex:none}
+.tabs button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.read{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0}
+.read div{background:var(--card);padding:12px 14px}.read b{display:block;font:500 clamp(24px,3.4vw,36px)/1.1 "Geist Mono",monospace}.read span{font-size:13px;color:var(--mut)}
+.read .hot b{color:var(--acc)}
+.fig{position:relative;min-height:300px}.fig>svg{position:absolute;inset:0;width:100%;height:100%}
+.fig.s{min-height:220px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:16px}
+table{border-collapse:collapse;width:100%;font-size:15px}th,td{padding:8px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-weight:500;color:var(--mut);font-size:13px}td.n,th.n{text-align:right}
+tr.edge td{background:var(--accs)}tr.edge td:first-child{box-shadow:inset 3px 0 var(--acc)}
+.pos{color:var(--acc);font-weight:600}.neg{color:var(--mut)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chips label{display:flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:0 12px;min-height:44px;background:var(--card);font-size:14px;cursor:pointer}
+.chips input{min-height:0;padding:0;width:18px;height:18px;flex:none;accent-color:var(--acc)}
+.ctrl{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:10px 0}.ctrl label{display:grid;gap:4px;font-size:13px;color:var(--mut)}
+.ctrl input[type=number]{width:110px}
+.note{border-left:3px solid var(--acc);padding:6px 12px;background:var(--card);margin:10px 0;font-size:14px}
+.heat{display:grid;grid-template-columns:44px repeat(24,minmax(0,1fr));gap:2px;font-size:11px}
+.heat div{height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center}
+.heat .l{justify-content:flex-start;color:var(--mut)}
+.feed{display:grid;gap:8px;max-height:520px;overflow:auto}.feed div{border-bottom:1px solid var(--line);padding:6px 0;font-size:14px}.feed time{color:var(--mut);font-size:12px;display:block}
+a{color:inherit}a.src{color:var(--mut);font-size:13px}
+details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
+pre,.scroll{overflow-x:auto}code{overflow-wrap:anywhere;font-family:"Geist Mono",monospace;font-size:13px}
+.nav{display:flex;gap:16px;overflow-x:auto;font-size:14px;padding:8px max(4vw,14px);max-width:1280px;margin:0 auto}.nav a{flex:none;text-decoration:none;color:var(--mut)}
+@media(min-width:900px){.nav{position:sticky;top:0;background:var(--bg);z-index:2}}
+html{scroll-padding-top:56px}
+@media(max-width:600px){table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:8em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;white-space:normal;color:var(--mut)}.stack td:empty{display:none}}
+</style>
+<script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script>
+</head>
+<body>
+<header class="band top">
+  <div><h1 id="headline">Elon Musk tweet counter · edge finder</h1>
+  <p class="mut sm">นับตามกติกา Polymarket: main feed posts + quote posts + reposts (ไม่นับ replies) จาก xtracker Post Counter</p></div>
+  <div class="status"><span class="dot" id="dot"></span><span id="stat">กำลังโหลด…</span>
+    <label class="sm mut">รีเฟรชทุก <select id="refresh" aria-label="รอบรีเฟรช"><option value="5">5 นาที</option><option value="15">15 นาที</option><option value="60">60 นาที</option></select></label>
+    <button id="btnNow">อัปเดตเดี๋ยวนี้</button></div>
+</header>
+<nav class="nav scroll" aria-label="sections"><a href="#now">ตลาดตอนนี้</a><a href="#avg">ค่าเฉลี่ย</a><a href="#time">ช่วงเวลา</a><a href="#anom">วันผิดปกติ</a><a href="#events">อีเวนต์</a><a href="#posts">โพสต์ล่าสุด</a><a href="#method">วิธีคิด</a></nav>
+
+<section class="band" id="now">
+  <div class="tabs" id="tabs" role="group" aria-label="เลือกตลาด"></div>
+  <div class="read" id="readout"></div>
+  <div class="card"><div class="fig" id="figScale"><svg></svg></div>
+  <p class="sm mut">แท่งดำ = ความน่าจะเป็นจากโมเดล · ขีดส้ม = ราคา Yes ในตลาด (ask) · แท่งที่ดำสูงกว่าขีดส้ม = ตลาดอาจตั้งราคาต่ำไป</p></div>
+  <div class="ctrl">
+    <div><div class="sm mut" style="margin-bottom:4px">ปรับตามอีเวนต์ที่จะเกิดในช่วงที่เหลือ (ค่าเฉลี่ยผลต่อ 48h จากอดีต)</div><div class="chips" id="chips"></div></div>
+    <label>ปรับเอง (± โพสต์)<input type="number" id="boost" value="0" step="1"></label>
+    <label>น้ำหนักแนวโน้ม 7 วัน (0–1)<input type="number" id="wgt" value="0.5" min="0" max="1" step="0.1"></label>
+    <label>เกณฑ์ edge (pp)<input type="number" id="thr" value="5" min="1" step="1"></label>
+  </div>
+  <div id="hint"></div>
+  <div class="scroll"><table class="stack" id="tblB"></table></div>
+  <p class="sm mut">edge = ความน่าจะเป็นของโมเดล − ราคาที่ซื้อได้จริง (หน่วย pp – percentage points / จุดเปอร์เซ็นต์) · EV (Expected Value – ค่าคาดหวัง) ต่อเงิน $1 · ไม่ใช่คำแนะนำทางการเงิน: โมเดลไม่รู้ข่าวที่ยังไม่เกิด</p>
+</section>
+
+<section class="band" id="avg">
+  <h2 id="avgTitle">ค่าเฉลี่ยเทียบกันได้ (หน่วยเดียวกัน)</h2>
+  <p class="mut sm">ทุกแถวแปลงเป็น “ต่อวัน / ต่อ 48h (48 ชั่วโมง) / ต่อ 7 วัน” · p10–p90 (เปอร์เซ็นไทล์ที่ 10–90: ช่วงที่ 80% ของหน้าต่างตกอยู่) นับจากหน้าต่างที่เริ่มเที่ยง ET (Eastern Time – เวลาตะวันออกสหรัฐฯ) แบบเดียวกับตลาด</p>
+  <div class="scroll"><table class="stack" id="tblAvg"></table></div>
+  <p class="sm mut" id="avgNote"></p>
+</section>
+
+<section class="band" id="time">
+  <h2 id="timeTitle">ช่วงเวลาที่โพสต์เยอะ (เวลาไทย ICT – Indochina Time)</h2>
+  <div class="tabs" id="tw" role="group" aria-label="ช่วงข้อมูล"></div>
+  <div class="grid2">
+    <div class="card"><h3>เฉลี่ยโพสต์ต่อชั่วโมง ตามชั่วโมงของวัน</h3><div class="fig s" id="figHour"><svg></svg></div><p class="sm mut" id="hourNote"></p></div>
+    <div class="card"><h3>เฉลี่ยโพสต์ต่อวัน ตามวันในสัปดาห์</h3><div class="fig s" id="figDow"><svg></svg></div></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>แผนที่ความร้อน วัน × ชั่วโมง (ICT, 365 วัน)</h3><div class="scroll"><div class="heat" id="heat" style="min-width:640px"></div></div></div>
+  <div class="card" style="margin-top:16px"><h3>รายเดือน (โพสต์/วัน)</h3><div class="fig s" id="figMon"><svg></svg></div><p class="sm mut">สีเทา = ประมาณจากผลตลาดรายสัปดาห์ที่ปิดแล้ว (กลาง bucket) · สีดำ = นับจริงจาก xtracker · เดือนปัจจุบันยังไม่ครบ</p></div>
+</section>
+
+<section class="band" id="anom">
+  <h2>วัน/สัปดาห์ที่สูงหรือต่ำผิดปกติ และเหตุผลเบื้องหลัง</h2>
+  <p class="mut sm">ฐาน = ค่ามัธยฐาน 28 วันรอบวันนั้น · ผิดปกติ = ≥1.8× หรือ ≤0.4× ของฐาน · วันตาม ET</p>
+  <div class="card"><div class="fig" id="figDay"><svg></svg></div></div>
+  <div class="grid2" style="margin-top:16px"><div><h3>สูงผิดปกติ</h3><div class="scroll"><table class="stack" id="tblHi"></table></div></div><div><h3>ต่ำผิดปกติ</h3><div class="scroll"><table class="stack" id="tblLo"></table></div></div></div>
+</section>
+
+<section class="band" id="events">
+  <h2>อีเวนต์ → ผลต่อจำนวนโพสต์</h2>
+  <div class="grid2">
+    <div><h3>ผลเฉลี่ยในอดีต (วันนั้น + วันถัดไป เทียบฐาน)</h3><div class="scroll"><table class="stack" id="tblEv"></table></div><p class="sm mut">ตัวอย่างน้อย (n = จำนวนเหตุการณ์) ใช้เป็นจุดตั้งต้น แล้วปรับเองด้วยวิจารณญาณ</p></div>
+    <div><h3>ปฏิทินที่กำลังจะมาถึง</h3><div class="scroll"><table class="stack" id="tblUp"></table></div></div>
+  </div>
+  <h3>ข่าวล่าสุด</h3><div id="news" class="card sm"></div>
+</section>
+
+<section class="band" id="posts">
+  <h2>โพสต์ล่าสุด</h2><p class="mut sm" id="silence"></p>
+  <div class="card feed" id="feed"></div>
+</section>
+
+<section class="band" id="method">
+  <h2>วิธีคิดของโมเดล</h2>
+  <p>สำหรับเวลาที่เหลือของตลาด ระบบดูย้อนหลัง 60 วันว่า “ช่วงเวลาเดียวกันของวัน” เคยมีกี่โพสต์ แล้วสุ่มจำลอง 20,000 รอบ คูณด้วยแนวโน้มล่าสุด (อัตรา 7 วัน ÷ 60 วัน ถ่วงน้ำหนัก 0.5) บวกผลอีเวนต์ที่เลือก แล้วบวกกับยอดปัจจุบัน → ได้ความน่าจะเป็นของแต่ละ bucket</p>
+  <div class="scroll"><table class="stack"><thead><tr><th>ทดสอบย้อนหลัง (ม.ค.–พ.ย. 2026)</th><th class="n">จำนวนตลาด</th><th class="n">ครอบคลุมช่วง 80%</th><th class="n">P เฉลี่ยของ bucket ที่ถูก</th></tr></thead><tbody>
+  <tr><td>48h · ตอนเปิดตลาด</td><td class="n">135</td><td class="n">85%</td><td class="n">27%</td></tr>
+  <tr><td>48h · ผ่านไป 50%</td><td class="n">135</td><td class="n">85%</td><td class="n">40%</td></tr>
+  <tr><td>48h · ผ่านไป 90%</td><td class="n">135</td><td class="n">90%</td><td class="n">69%</td></tr>
+  <tr><td>7 วัน · ผ่านไป 50%</td><td class="n">89</td><td class="n">80%</td><td class="n">14%</td></tr>
+  <tr><td>7 วัน · ผ่านไป 90%</td><td class="n">89</td><td class="n">91%</td><td class="n">42%</td></tr></tbody></table></div>
+  <p class="sm mut">ช่วง 80% ครอบคลุมผลจริง ~80–90% และค่ากลางไม่เอียง (ค่า PIT เฉลี่ย ≈ 0.49) = โมเดลไม่มั่นใจเกินจริง · จุดอ่อน: เดาข่าวใหญ่ล่วงหน้าไม่ได้ และเวลาที่ Musk เดินทางข้ามเขตเวลา (เช่น เอเชีย) รูปแบบรายชั่วโมงจะเลื่อน</p>
+  <p class="sm mut">แหล่งข้อมูล: <a href="https://xtracker.polymarket.com">xtracker.polymarket.com</a> (API – Application Programming Interface สาธารณะ) · <a href="https://polymarket.com">Polymarket</a> (ราคาจาก gamma-api) · ข้อมูลก่อน พ.ย. 2025 ประมาณจากผลตลาดรายสัปดาห์ที่ปิดแล้ว (± ครึ่งความกว้าง bucket) · ปฏิทิน Starship จาก Launch Library 2</p>
+</section>
+
+<script>
+const SNAP={"t0":"2025-11-01T00:00:00Z","enc":"10000000000000110000300000000221000001020122111001008400079300010225160002022100000094004003010200002100000000005001000140000004000000001000050002120a000004101060010000100000012910000000110502031212400000001000133000000034100000006102010200014003111000000801301113050321700000004604256000002111495000001g70111031260100920450004c4015040020004011400000000023010017110000044318100041001300002000000001001100031221031bc1000000002010001000000010000000010007b00031302004100000010000111400020410000000200300000100000270000068020009300000000079200002901200104010100b000000002300061000020152a000090f0007c2210000007300130000070520201811230240a2350000161324000131220076000020200582010300516000000002000000002600011801000000130000680031500c7000000000110000000011c000002600106a25300000002000004b50001200002000000m300b80000801000300200b208200002007f0b042010206070000qe600g02300a0305531003a00001920023241b700800bp80000014045010120010800000000513k55400000002j0000000j50323001400000135060000295560000120210003611000000000302000140000004c000000000000000005a00000440000000131002004b49000000040422000000107000000030004813400000001006a00007v00530000031005220100000010091110001860j3000000e006703c10000000000001000000340002fh006jb00011000640005110000001b002000068317600000010004020000001a51213000000005e70000000d0b6b400c4310400000000000440020112005a0c0000000d3050002001293023000444007920100052000025d0000070076310300410205k900009ea0573210000101e00000000aq37b3940d140000d159000000g30003ke735002001000000000059a0c00000k0000000a00n3530000600g35a60000000618746d1140000c83b10005c8a006400000000000100000j8b1009511500049a000001f8000410a52011000a10000bf506p2600000001012c100007flgcb3025000000000{49}300000080047004b100dj5000005jl00040001b04003706a9c01000742a001822110101102692000150300010000b80000606007010010200000la000082p51740d004022000eak492000004603111025003k40000077h39t0040b030a00900000ei00007040000l100433d100000009000040911012g40000000060038013241100eca10000040300012130000002061133000002110030007001kh900014207be40009gae001c000000007632101030302075000006700130100612503d40000281005426300114112921000000f580000010020000100000c860321210011101d920000000521211010054102128700002q503ca900040131311a00000670010773100101641000000a704702100002000344007200000005b50000322c2000000010304500061140144000000009756b000002020273000002c11400113600260000000000112030010120000003900010056001000000032500000000110410001200000007ab2000862200038050005000005o4452c244100100210088000h{37}f007092101000110600000h70001272100b0000943200000000117200000100022000000001310040310000270000000190180100103003467000005400032301300000003520000514311430041000210000800b004db43b200100000720016001423000000311027a500000231340000000003h0009a74200647406000000973600000620403640401010122d000072000020000022014a2000000026103011650057090000000067101000000100712000000e200a3201097200002a00000060770001001100004b000060001002120100100210000000002002012231202800001412020003010110010223000005371010000000010000000009020110000000000003460003702203020235000006c600034a122001000000334600001b300020011012019dci00000011001010062021n100000003010268401b3a63004000000004c2000020001402f0000bn0057632020000004120000007100100000000021022g6000f400042300001001h00000aa4001b41022000261e000000c1000001000002004950000130000040001001301040002010010000082001000241003d10a930000000000000561000g4510124011105313ach6100850010331055410149300497300001105001001154430g73000000361720a54340000000049301231110534010000190000000800001000520000066000011010021000446000000900000701310200004540000024253001051034130000006000416000500002330000c600001101000000001080000000000014253400014305810001064101001100021007d520000006100301030048410031703f1100000000000052000000000052200105313a378a0080006000035a00000000060000000210071102000642000000304050030013471002520000000721001002000ee100000000040102031106094000000052200100003067348200000000050022000600109000000220733010650200006000000410114207001240120100fh00000e95g1306800086000000000203400092000003000000001021001000004100bg1000008001010040000002i0000001222500004093450000000001007400061425123200000001100425023000000120000003200000014600001360000054000035000231002000000005300000012100000ge000000035300100040005130350000000000011000500014000000083101060540060050000d825001320300005107000000000203010111101110000000002380d0621301002050000000000000010100030052000001500000000000000203000000050130010100431002013000030005500140040004400000000000001000100090680000070041040020310130022000004000052000000011000092100001000000001412000000000103350000311811000000000032013100000146000000000001130111000032000000031050131100000210000020200000025000000000000000010501010110201000000003002010b0205110200060000001000000500100110100010102070b30000300330000000472723000000022102700000001a2540000000000150420000011013120728200087200004452018120022000000000004440050000000206b0000002c040060023d228035210000070401001352000001510205718000277254066100000000000301010005021003500000042041002102012081000000050000164002300000000000013542200001003000002510000000400300110011110000000100220120300000a00100800000180300000006000000005002000000050015000000002000000330021700000000401100000000a0130a2000009a00030000000000087000004200702001021616320000000110002431110343004000000400791000001000a5100000060202300621000110000008800002104100104221000000070a10180000002204000000008040001050300001300004100020212001124720000310210822110a200000011000000f504000100106000030000000000000000000000003300001023102d1000330000000000258271130200000260000006715000022110060240500400001221002007611130000000001160000048230200000000160050200020000000120000004400d00001100030000000031a002011104100000000003824007120120001600000002gaj71320100002139000000040030040010003b97100000107000220200042100000000100301133310023a6000000100000000000040202011100000000012333080000000a540384503000001a3303000000032332400520000000200000220031000500010000000000024020000230001004000000000000100004001000400000000000011000000000012c0000000000010064060000000000200101000030330300000000a30000000000003500000000036055900000000de60000002902000064240010a1000000410000107050053000060320000001000500000000020000030001160000011120000000100600030000203000000006000000000006001000007281a00001001100405000001070002010570200000430011000100030010332322301000002110000000200130010000000040002351010210000030000202000000000081700000000030203000064609b35000b000110006310000055000000000043120e2400320007000000424a442236730b341000000000224137432350000000000130310010000000570000000023630000003210200000000050000000701000139000006d000025001127913330000001500001280100a29200000000240164451621123300000000150001000501000300000000000100200003226000000060600012012000102000000042121009202000090000000211030200000067100000000134a00001305211101000000003000900000400410000000003b5000301100102320000110000030600100000150000000430000003110001300000000200604000000000522000000041b420010000023001000004000950691000256100000001220000000021112000000001001000704700010400000000000000100611002000000000010300004001013000000003070148700110098317000009b38b300010011cc0000bd00007a002625122010000000000181102b2645280000000000061213100000000000008000001351433000300000000001040a3216120000401100000002572102005000020000000000000300000000103000000011030a0000341002000000001000410260030007023100000020312103520100221000002410541001053200002210000000100113701000000000012d704110000030032410000000042000000003i80000000237004340012009001010000164004005440125106400000012040030004100000240000000001000150000011000000000211042140103300081000021500203000000025000000230034000000012012000001a4002100100210007313400100044002010000010200000050211000000300210505000000020001220f31000000079003003030000000358400000000111574011000180000001000300200000411020241000037002000300000140000044049200101200000017420000062200030000210322003700000001032032104022200010001465b000103400520000000067554000100000005000000201401401000251003000000012101101210014020900000001330003000004100520000240120013003000100025700001301700016640000000013040209020160100000000000001100411817722000000000000182000301100018100000025082a7002000001156000000200780003000011032000020000304120071000005430003920050000401006004032000000000000000000000000000800016300030084c000000077c91230114504je1000615c457291ia5220030001000001102601000060045005000000b5201023000000350000036200112110020440230000000014320010136e1034000051000000200g910000c43000000112a01002074eda166000177000080082323666b711000000017352026600003217000300001610210133700131000000340800111000231026000000002301010012106500000000106b000310000014600060002d8900413104007003553000056521000104010c00000001017e20003020200a400000049031310031372131a0000000b50031510030060030000025008a011052002370300000005545800000020001ba300000540500010001c93230000001930101314200379h5000000m8c874002b5001000510000035a0f4b243100100000000257000055c50602000000000002120000100001636100000047605g016100000000332000006414401000000001051000001045060200000020i143001005710716182701014260000000367302000000040000004302230000112026004202c0008950000200002a00000230000001003011000000005000000003501010020143602000000020001010000009500100007410343203042100g4000003a6612050488312000951000000002240362a25513110000020000614030a7044444000340083500200051b04200344000000001600a840134760000000350000011003000010250001b5500000000000444d00000000233132625400010047b00000025b401800010000000063052600003000000001110003400000023050382216","weeks":[["2024-05-24",0,54],["2024-05-31",80,89],["2024-06-14",40,49],["2024-06-28",70,79],["2024-07-05",70,79],["2024-07-12",100,null],["2024-07-19",100,109],["2024-07-26",120,null],["2024-08-02",80,89],["2024-08-09",130,null],["2024-08-16",80,99],["2024-08-23",150,null],["2024-08-30",180,null],["2024-09-06",225,249],["2024-09-13",225,249],["2024-09-20",200,224],["2024-09-27",300,null],["2024-10-04",175,199],["2024-10-11",200,224],["2024-10-18",300,null],["2024-10-25",400,null],["2024-11-08",375,399],["2024-11-15",450,null],["2024-11-22",475,499],["2024-11-29",0,299],["2024-12-06",400,424],["2024-12-13",400,424],["2024-12-20",300,324],["2024-12-27",400,424],["2025-01-03",500,null],["2025-01-10",400,449],["2025-01-17",325,349],["2025-01-24",250,null],["2025-01-31",450,null],["2025-02-07",800,null],["2025-02-14",600,649],["2025-02-21",750,799],["2025-02-28",550,599],["2025-03-07",500,524],["2025-03-14",425,449],["2025-03-21",475,499],["2025-03-28",325,349],["2025-04-04",0,249],["2025-04-11",150,174],["2025-04-18",200,224],["2025-04-25",150,174],["2025-05-02",225,249],["2025-05-16",150,174],["2025-05-23",125,149],["2025-05-30",230,null],["2025-06-06",175,199],["2025-06-13",145,159],["2025-06-20",130,144],["2025-06-27",165,179],["2025-07-04",150,164],["2025-07-11",180,194],["2025-07-18",195,209],["2025-07-25",150,164],["2025-08-01",255,null],["2025-08-08",470,null],["2025-08-15",0,249],["2025-08-22",195,209],["2025-08-29",400,null],["2025-09-05",220,239],["2025-09-09",240,259],["2025-09-12",240,259],["2025-09-16",180,199],["2025-09-19",120,139],["2025-09-23",120,139],["2025-09-26",240,259],["2025-09-30",300,319],["2025-10-03",280,299],["2025-10-07",240,259],["2025-10-10",180,199],["2025-10-14",260,279],["2025-10-17",280,299],["2025-10-21",180,199],["2025-10-24",200,219],["2025-10-28",200,219],["2025-10-31",160,179],["2025-11-04",140,159],["2025-11-07",240,259],["2025-11-11",260,279],["2025-11-14",160,179],["2025-11-18",200,219],["2025-11-21",280,299],["2025-11-25",260,279],["2025-11-28",240,259],["2025-12-02",420,439],["2025-12-05",440,459],["2025-12-09",260,279],["2025-12-12",260,279],["2025-12-16",340,359],["2025-12-19",340,359],["2025-12-23",420,439],["2025-12-26",500,519],["2025-12-30",520,539],["2026-01-02",560,579],["2026-01-06",540,559],["2026-01-09",540,559],["2026-01-13",520,539],["2026-01-16",460,479],["2026-01-20",380,399],["2026-01-23",380,399],["2026-01-27",340,359],["2026-01-30",280,299],["2026-02-03",360,379],["2026-02-06",360,379],["2026-02-10",240,259],["2026-02-13",300,319],["2026-02-17",360,379],["2026-02-20",300,319],["2026-02-24",200,219],["2026-02-27",200,219],["2026-03-03",340,359],["2026-03-06",360,379],["2026-03-10",280,299],["2026-03-13",320,339],["2026-03-17",360,379],["2026-03-20",260,279],["2026-03-24",220,239],["2026-03-27",260,279],["2026-03-31",260,279],["2026-04-03",240,259],["2026-04-07",280,299],["2026-04-10",300,319],["2026-04-14",220,239],["2026-04-17",200,219],["2026-04-21",220,239],["2026-04-24",180,199],["2026-04-28",140,159],["2026-05-01",160,179],["2026-05-05",100,119],["2026-05-08",140,159],["2026-05-12",220,239],["2026-05-15",280,299],["2026-05-19",380,399],["2026-05-22",180,199],["2026-05-26",160,179],["2026-05-29",180,199],["2026-06-02",220,239],["2026-06-05",220,239],["2026-06-09",200,219],["2026-06-12",180,199],["2026-06-16",200,219],["2026-06-19",240,259],["2026-06-23",240,259],["2026-06-26",180,199],["2026-06-30",120,139],["2026-07-03",180,199],["2026-07-07",180,199],["2026-07-10",160,179],["2026-07-14",140,159],["2026-07-17",200,219],["2026-07-21",280,299],["2026-07-24",260,279],["2026-07-28",220,239],["2026-07-31",180,199],["2026-08-04",160,179],["2026-08-07",180,199],["2026-08-11",160,179],["2026-08-14",240,259],["2026-08-18",320,339],["2026-08-21",180,199],["2026-08-25",160,179],["2026-08-28",220,239],["2026-09-01",200,219],["2026-09-04",160,179],["2026-09-08",180,199],["2026-09-11",200,219],["2026-09-15",220,239],["2026-09-18",200,219],["2026-09-22",180,199],["2026-09-25",220,239],["2026-09-29",200,219],["2026-10-02",320,339],["2026-10-06",360,379],["2026-10-09",340,359],["2026-10-13",320,339],["2026-10-16",260,279],["2026-10-20",320,339],["2026-10-23",380,399],["2026-10-27",380,399],["2026-10-30",300,319],["2026-11-03",260,279],["2026-11-06",220,239],["2026-11-10",300,319],["2026-11-13",340,359],["2026-11-17",280,299]],"markets":[{"title":"Elon Musk # tweets November 23 - November 25, 2026?","start":"2026-11-23T17:00:00Z","end":"2026-11-25T16:59:59Z","slug":"elon-musk-of-tweets-november-23-november-25-2026","total":58,"markets":[["<40",null,0.001,0.0,115910],["40-64",0.64,0.65,0.645,98851],["65-89",0.35,0.36,0.355,57281],["90-114",0.006,0.007,0.0065,75865],["115-139",null,0.001,0.0005,48922],["140-164",null,0.001,0.0005,26072],["165-189",null,0.001,0.0005,17700],["190-214",null,0.001,0.0005,11651],["215-239",null,0.001,0.0005,7194],["240+",null,0.001,0.0005,2620]]},{"title":"Elon Musk # tweets November 20 - November 27, 2026?","start":"2026-11-20T17:00:00Z","end":"2026-11-27T16:59:59Z","slug":"elon-musk-of-tweets-november-20-november-27-2026","total":188,"markets":[["<20",null,0.001,0.0,1300],["20-39",null,0.001,0.0,1268],["40-59",null,0.001,0.0,1328],["60-79",null,0.001,0.0,2918],["80-99",null,0.001,0.0,8925],["100-119",null,0.001,0.0,15159],["120-139",null,0.001,0.0,44584],["140-159",null,0.001,0.0,29623],["160-179",null,0.001,0.0,58218],["180-199",null,0.001,0.0005,58573],["200-219",0.008,0.009,0.0085,49330],["220-239",0.068,0.07,0.069,52153],["240-259",0.21,0.22,0.215,40966],["260-279",0.28,0.29,0.285,34423],["280-299",0.23,0.24,0.235,39177],["300-319",0.11,0.12,0.115,40570],["320-339",0.054,0.055,0.0545,34541],["340-359",0.022,0.024,0.023,35247],["360-379",0.009,0.01,0.0095,27152],["380-399",0.003,0.004,0.0035,36571],["400-419",0.002,0.003,0.0025,36751],["420-439",0.001,0.002,0.0015,36282],["440-459",null,0.001,0.0005,30635],["460-479",null,0.001,0.0005,25248],["480-499",null,0.001,0.0005,28397],["500-519",null,0.001,0.0005,21358],["520-539",null,0.001,0.0005,14134],["540-559",null,0.001,0.0005,12464],["560-579",null,0.001,0.0005,3197],["580+",null,0.001,0.0005,12233]]},{"title":"Elon Musk # tweets November 24 - December 1, 2026?","start":"2026-11-24T17:00:00Z","end":"2026-12-01T16:59:59Z","slug":"elon-musk-of-tweets-november-24-december-1-2026","total":32,"markets":[["<20",null,0.001,0.0,22290],["20-39",null,0.001,0.0005,2518],["40-59",null,0.001,0.0005,1518],["60-79",null,0.001,0.0005,9983],["80-99",null,0.001,0.0005,23840],["100-119",0.001,0.002,0.0015,16865],["120-139",0.003,0.004,0.0035,12060],["140-159",0.006,0.007,0.0065,12052],["160-179",0.014,0.015,0.0145,9726],["180-199",0.031,0.036,0.0335,10942],["200-219",0.06,0.07,0.065,5601],["220-239",0.11,0.12,0.115,9699],["240-259",0.13,0.14,0.135,8558],["260-279",0.14,0.15,0.145,9315],["280-299",0.12,0.13,0.125,7005],["300-319",0.11,0.12,0.115,8406],["320-339",0.07,0.08,0.075,10631],["340-359",0.06,0.07,0.065,7137],["360-379",0.036,0.038,0.037,9805],["380-399",0.026,0.027,0.0265,6693],["400-419",0.015,0.016,0.0155,5881],["420-439",0.009,0.01,0.0095,8576],["440-459",0.006,0.007,0.0065,7090],["460-479",0.004,0.005,0.0045,7781],["480-499",0.003,0.004,0.0035,9493],["500-519",0.001,0.002,0.0015,8469],["520-539",null,0.001,0.0005,3776],["540-559",null,0.001,0.0005,2415],["560-579",0.001,0.002,0.0015,14001],["580+",null,0.001,0.0005,12107]]},{"title":"Elon Musk # tweets in November 2026?","start":"2026-11-01T04:00:00Z","end":"2026-12-01T04:59:59Z","slug":"elon-musk-of-tweets-november-2026","total":987,"markets":[["<20",null,0.001,0.0,176],["20-39",null,0.001,0.0,1229],["40-59",null,0.001,0.0,1003],["60-79",null,0.001,0.0,668],["80-99",null,0.001,0.0,640],["100-119",null,0.001,0.0,648],["120-139",null,0.001,0.0,648],["140-159",null,0.001,0.0,648],["160-179",null,0.001,0.0,648],["180-199",null,0.001,0.0,726],["200-219",null,0.001,0.0,2170],["220-239",null,0.001,0.0,3291],["240-259",null,0.001,0.0,3356],["260-279",null,0.001,0.0,3600],["280-299",null,0.001,0.0,3510],["300-319",null,0.001,0.0,2552],["320-339",null,0.001,0.0,2551],["340-359",null,0.001,0.0,2586],["360-379",null,0.001,0.0,2586],["380-399",null,0.001,0.0,3100],["400-419",null,0.001,0.0,2594],["420-439",null,0.001,0.0,1842],["440-459",null,0.001,0.0,176],["460-479",null,0.001,0.0,1010],["480-499",null,0.001,0.0,716],["500-519",null,0.001,0.0,6051],["520-539",null,0.001,0.0,1061],["540-559",null,0.001,0.0,1101],["560-579",null,0.001,0.0,5457],["580-599",null,0.001,0.0,5255],["600-619",null,0.001,0.0,8062],["620-639",null,0.001,0.0,7049],["640-659",null,0.001,0.0,5128],["660-679",null,0.001,0.0,10946],["680-699",null,0.001,0.0,5477],["700-719",null,0.001,0.0,4109],["720-739",null,0.001,0.0,9651],["740-759",null,0.001,0.0,11335],["760-779",null,0.001,0.0,8918],["780-799",null,0.001,0.0,8890],["800-839",null,0.001,0.0,11475],["840-879",null,0.001,0.0,13471],["880-919",null,0.001,0.0,20466],["920-959",null,0.001,0.0,20036],["960-999",null,0.001,0.0005,54467],["1000+",0.999,1,0.9995,102360]]},{"title":"Elon Musk # tweets November 26 - November 28, 2026?","start":"2026-11-26T17:00:00Z","end":"2026-11-28T16:59:59Z","slug":"elon-musk-of-tweets-november-26-november-28-2026","total":0,"markets":[["<40",0.04,0.06,0.05,1258],["40-64",0.26,0.28,0.27,2746],["65-89",0.35,0.36,0.355,2549],["90-114",0.2,0.22,0.21,1547],["115-139",0.05,0.07,0.06,850],["140-164",0.02,0.037,0.0285,762],["165-189",0.004,0.009,0.0065,446],["190-214",0.002,0.008,0.005,1195],["215-239",0.001,0.003,0.002,760],["240+",0.001,0.003,0.002,833]]}],"snapTime":"2026-11-25T12:37:00Z","evSummary":[{"type":"Political / regulatory clash","th":"การเมือง/ขัดแย้งกับรัฐ","ex":"EU ปรับ X, รับเหรียญจาก Trump, วันเลือกตั้ง","r1":2.14,"d48":49.33,"n":3},{"type":"Product launch (Musk co.)","th":"เปิดตัวผลิตภัณฑ์","ex":"Robotaxi ไม่มีคนคุม, Grok Bot","r1":1.68,"d48":36.5,"n":2},{"type":"Tesla earnings","th":"งบ Tesla","ex":"Q4-25, Q3-26","r1":1.04,"d48":25.0,"n":2},{"type":"Starship launch","th":"Starship launch","ex":"Flight 12, 14, 15","r1":1.54,"d48":23.33,"n":3},{"type":"US holiday","th":"วันหยุดสหรัฐฯ","ex":"Thanksgiving, Christmas, New Year, 4 ก.ค.","r1":0.64,"d48":-9.75,"n":4},{"type":"Capital-markets event","th":"IPO (Initial Public Offering) / ตลาดทุน","ex":"SpaceX IPO 12 มิ.ย.","r1":1.1,"d48":-24.0,"n":1}],"expl":{"2025-12-05":{"t":"EU ปรับ X €120 ล้านตาม DSA (Digital Services Act – กฎหมายบริการดิจิทัลของ EU) — Musk ตอบโต้หนักเรื่องเสรีภาพการพูด/ยุโรป","s":"https://www.aljazeera.com/amp/news/2025/12/5/eu-hits-musks-x-with-140m-fine-for-deceptive-blue-tick-ad-transparency"},"2025-12-06":{"t":"วันถัดจาก EU ปรับ X — โพสต์เรื่องยุโรป/censorship ต่อเนื่อง + ปฏิเสธข่าวระดมทุน SpaceX $800B","s":"https://www.techspot.com/news/110520-elon-musk-calls-eu-abolished-x-cuts-off.html"},"2026-01-22":{"t":"Tesla เริ่ม Robotaxi ไม่มี safety monitor ที่ Austin + อยู่ร่วมงาน Davos WEF (World Economic Forum)","s":"https://techcrunch.com/2026/01/22/tesla-launches-robotaxi-rides-in-austin-with-no-human-safety-driver/"},"2026-01-29":{"t":"วันหลังงบ Tesla Q4-25 (28 ม.ค.) + โปรโมต Grok Imagine (วิดีโอ/API) อย่างหนัก — จากเนื้อหาโพสต์","s":"https://ir.tesla.com/press-release/tesla-releases-fourth-quarter-and-full-year-2025-financial-results"},"2026-02-10":{"t":"ประเด็นการเมือง: เอกสารศาลคดี Epstein, แก๊งล่วงละเมิดในอังกฤษ — รีโพสต์จำนวนมาก (จากเนื้อหาโพสต์)","s":null},"2026-03-19":{"t":"โปรโมต Grok Imagine templates + Grok Heavy (จากเนื้อหาโพสต์)","s":null},"2026-04-12":{"t":"ถกเรื่อง Starlink ถูกปฏิเสธใบอนุญาตในแอฟริกาใต้ + วัคซีน + ผู้อพยพ (จากเนื้อหาโพสต์)","s":null},"2026-05-20":{"t":"SpaceX ต้องเปิดเอกสาร S-1 ยื่น IPO ภายใน 20 พ.ค. + ดีล AI compute กับ Anthropic → ตามด้วย Starship V3 Flight 12 (22 พ.ค.) สัปดาห์นั้นสูงกว่าฐาน 1.64×","s":"https://www.fool.com/investing/2026/05/17/spacex-accelerates-ipo-timeline-10-things-to-know/"},"2026-05-22":{"t":"Starship V3 Flight 12","s":"https://pbs.org/newshour/science/spacex-launches-its-biggest-starship-mega-rocket-yet-on-test-flight"},"2026-08-19":{"t":"โปรโมต Grok Bot (เปิด beta 11 ส.ค. ขยายไปแพ็กเกจอื่น 21 ส.ค.) + Starlink","s":"https://x.ai/news/grok-bot-more-plans"},"2026-08-20":{"t":"โปรโมต Grok Bot ต่อเนื่อง (คำว่า grok/bot/build เด่นสุด) + Starship catch","s":"https://x.ai/news/grok-bot-more-plans"},"2026-10-07":{"t":"อัปเดตใหญ่ Grok Bot/Grok Build + แคมเปญ Starlink India","s":null},"2026-10-08":{"t":"รับ National Medal of Science จาก Trump + Starlink Mobile/คลื่นความถี่ + Starlink India","s":"https://www.malaymail.com/amp/news/world/2026/10/09/trump-calls-musk-a-national-treasure-while-handing-him-top-us-science-honour/238334"},"2026-10-14":{"t":"เปิดตัว Grok Voice 3.0 + การเมืองเลือกตั้งวุฒิสภาเท็กซัส","s":"https://x.ai/news"},"2026-10-30":{"t":"เร่งชวนโหวตก่อนเลือกตั้งกลางเทอม 3 พ.ย. (Musk ทุ่มราว $500M หนุนผู้สมัคร Republican)","s":"https://www.latintimes.com/elon-musk-dealbook-summit-political-bet-tesla-starlink-601556"},"2026-11-14":{"t":"วันหลัง Starship Flight 15 (13 พ.ย.) + รีโพสต์ภาษาเยอรมัน/ฝรั่งเศสจำนวนมาก","s":"https://www.space.com/space-exploration/launches-spacecraft/spacex-starship-flight-15-chopsticks-double-catch-super-heavy-ship"},"2026-06-13":{"t":"วันหลัง SpaceX IPO เข้าเทรด (12 มิ.ย.) — เงียบผิดปกติ","s":"https://www.npr.org/2026/06/11/nx-s1-5853199/spacex-is-poised-for-blastoff-with-an-ipo-likely-to-break-records"},"2026-07-04":{"t":"วันชาติสหรัฐฯ (US holiday)","s":null},"2026-07-03":{"t":"ช่วงหยุดยาว 4 ก.ค.","s":null},"2026-02-05":{"t":"วันให้สัมภาษณ์ podcast ยาวกับ Dwarkesh Patel/John Collison (จากเนื้อหาโพสต์)","s":null},"2026-11-10":{"t":"น่าจะเป็นช่วงเดินทางเอเชีย (ร่วมคณะสหรัฐฯ ช่วง APEC เซินเจิ้น) — เขตเวลาเปลี่ยน","s":"https://www.latintimes.com/elon-musk-dealbook-summit-political-bet-tesla-starlink-601556"},"2026-11-12":{"t":"น่าจะเป็นช่วงเดินทางเอเชีย (ร่วมคณะสหรัฐฯ ช่วง APEC เซินเจิ้น)","s":"https://www.latintimes.com/elon-musk-dealbook-summit-political-bet-tesla-starlink-601556"},"2026-07-09":{"t":"Grok 4.5 ขึ้นอันดับต้นในหลาย benchmark — โปรโมตหนัก (จากเนื้อหาโพสต์)","s":"https://www.reworked.co/collaboration-productivity/xai-launches-grok-bot-ai-agents-in-beta/"},"2026-06-23":{"t":"ถกเรื่อง USAID/DOGE (ตอบโต้ข้อกล่าวหาว่า DOGE ทำให้เด็กเสียชีวิต) — รีโพสต์จำนวนมาก (จากเนื้อหาโพสต์)","s":null},"2026-05-18":{"t":"โปรโมต Grok Imagine/Grok Build + ประเด็นคดีความในศาล — ก่อนสัปดาห์ S-1 SpaceX (จากเนื้อหาโพสต์)","s":null},"2026-08-26":{"t":"ไม่พบข่าวอธิบายชัด — โพสต์เพียงช่วงสั้น ๆ (น่าจะเดินทาง/ติดภารกิจ)","s":null},"2025-11-01":{"t":"ไม่พบข่าวอธิบายชัด — วันเสาร์ที่เงียบมาก","s":null},"2026-07-20":{"t":"ไม่พบข่าวอธิบายชัด — ช่วงรอ Starship Flight 13 ที่เลื่อนจาก 16 ก.ค.","s":"https://www.space.com/space-exploration/launches-spacecraft/spacex-targets-july-16-for-starship-flight-13-reveals-what-went-wrong-on-previous-launch/amp/"},"2026-04-14":{"t":"ไม่พบข่าวอธิบายชัด — โพสต์เป็นช่วง ๆ (น่าจะเดินทาง)","s":null},"2025-12-13":{"t":"ไม่พบข่าวอธิบายชัด — ทั้ง 16 โพสต์อยู่ในช่วง 80 นาทีเดียว","s":null},"2026-07-26":{"t":"ไม่พบข่าวอธิบายชัด — วันอาทิตย์ที่เงียบ","s":null}},"upcoming":[{"d":"2026-11-26","t":"Thanksgiving สหรัฐฯ (ปี 2025 วันนี้กลับสูงกว่าฐาน 1.28×)","type":"US holiday"},{"d":"2026-12-10","t":"Starship Flight 16 — ครั้งแรกจาก Florida LC-39A (วันยังไม่ยืนยัน)","type":"Starship launch","est":true,"s":"https://tech-insider.org/spacex-lc-39a-florida-pad-key-test-2026/"},{"d":"2026-12-25","t":"Christmas (ปี 2025 = 0.44× ของฐาน)","type":"US holiday"},{"d":"2027-01-01","t":"New Year (ปี 2026 = 0.59× ของฐาน)","type":"US holiday"},{"d":"2027-01-02","t":"Tesla ยอดส่งมอบ Q4 (ตามรอบปกติ)","est":true},{"d":"2027-01-20","t":"Davos WEF ช่วงปลาย ม.ค. (ปี 2026 Musk ไปร่วม)","est":true},{"d":"2027-01-27","t":"Tesla งบ Q4-2026","type":"Tesla earnings","est":true,"s":"https://en.arincen.com/instruments/TSLA/earnings"}]};
+</script>
+<script>
+{
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const HR=36e5,DAY=864e5,XT='https://xtracker.polymarket.com/api',GM='https://gamma-api.polymarket.com',LL='https://ll.thespacedevs.com/2.2.0';
+const fICT=new Intl.DateTimeFormat('th-TH',{timeZone:'Asia/Bangkok',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+const fET=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+const fKey=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'});
+const DOW=['จ.','อ.','พ.','พฤ.','ศ.','ส.','อา.'];
+const decode=e=>{const o=[],re=/\{(\d+)\}|./g;let m;while(m=re.exec(e))o.push(m[1]?+m[1]:parseInt(m[0],36));return o};
+const encode=a=>a.map(v=>v<36?v.toString(36):`{${v}}`).join('');
+const S={t0:Date.parse(SNAP.t0),bins:decode(SNAP.enc),recent:new Map(),live:false,tr:[],sel:0,prices:{},official:{},launches:[],news:null,last:null,tw:90,dayWin:180,ev:new Set(),
+  set:{refresh:15,w:.5,thr:5,boost:0}};
+S.fz=S.t0+S.bins.length*HR;
+const NOW=()=>S.live?Date.now():Date.parse(SNAP.snapTime);
+const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+function loadCache(){const c=store.get('etx1');if(!c||c.t0!==SNAP.t0)return;const b=decode(c.enc);if(b.length>=S.bins.length){S.bins=b;S.fz=S.t0+b.length*HR;for(const[id,t,x]of c.rec||[])if(t>=S.fz)S.recent.set(id,{t,c:x})}Object.assign(S.set,c.set||{})}
+function save(){store.set('etx1',{t0:SNAP.t0,enc:encode(S.bins),rec:[...S.recent].map(([id,p])=>[id,p.t,p.c]),set:S.set})}
+async function getJSON(u,ms=20000){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),ms);try{const r=await fetch(u,{signal:ac.signal});if(!r.ok)throw Error(r.status);return await r.json()}finally{clearTimeout(t)}}
+function fold(){const cut=Math.floor((Date.now()-3*DAY)/HR)*HR;if(cut<=S.fz)return;const n=(cut-S.t0)/HR;while(S.bins.length<n)S.bins.push(0);for(const[id,p]of S.recent)if(p.t<cut){S.bins[Math.floor((p.t-S.t0)/HR)]++;S.recent.delete(id)}S.fz=cut}
+async function refreshPosts(){const now=Date.now();let f=S.fz;const got=[];while(f<now){const to=Math.min(f+15*DAY,now+HR);const j=await getJSON(`${XT}/users/elonmusk/posts?platform=X&startDate=${new Date(f).toISOString()}&endDate=${new Date(to).toISOString()}`);got.push(...(j.data||[]));f=to}
+  for(const p of got){const t=Date.parse(p.createdAt);if(t>=S.fz)S.recent.set(p.id,{t,c:String(p.content||'').slice(0,300)})}fold();save()}
+async function tryHourlyFile(){try{const j=await getJSON('data/hourly.json',8000);if(j.t0===SNAP.t0){const b=decode(j.enc);if(b.length>S.bins.length){S.bins=b;const nf=S.t0+b.length*HR;for(const[id,p]of S.recent)if(p.t<nf)S.recent.delete(id);S.fz=nf}}}catch(e){}}
+function series(){const n=Math.floor((NOW()-S.t0)/HR)+1,h=S.bins.slice(0,n);while(h.length<n)h.push(0);for(const p of S.recent.values()){const i=Math.floor((p.t-S.t0)/HR);if(i>=0&&i<n&&p.t<NOW())h[i]++}return h}
+function mkR(h){const P=[0];for(const v of h)P.push(P[P.length-1]+v);const at=ms=>{const x=(ms-S.t0)/HR;if(x<=0)return 0;if(x>=h.length)return P[h.length];const i=Math.floor(x);return P[i]+h[i]*(x-i)};return(a,b)=>at(b)-at(a)}
+function exact(a,b){let n=0;const fz=Math.min(S.fz,b);if(a<fz){const i0=Math.max(0,Math.round((a-S.t0)/HR)),i1=Math.round((fz-S.t0)/HR);for(let i=i0;i<i1;i++)n+=S.bins[i]||0}for(const p of S.recent.values())if(p.t>=Math.max(a,S.fz)&&p.t<b)n++;return n}
+const keysCache={n:0,k:[]};
+function keys(n){if(keysCache.n<n){for(let i=keysCache.n;i<n;i++){const s=fKey.format(new Date(S.t0+i*HR));keysCache.k.push([s.slice(0,10),+s.slice(-2)%24])}keysCache.n=n}return keysCache.k}
+function daily(h){const k=keys(h.length),m=new Map();h.forEach((v,i)=>m.set(k[i][0],(m.get(k[i][0])||0)+v));const a=[...m];a.pop();return a.slice(1)}
+const quant=(arr,q)=>{if(!arr.length)return NaN;const s=[...arr].sort((a,b)=>a-b),p=(s.length-1)*q,i=Math.floor(p);return s[i]+(s[Math.min(i+1,s.length-1)]-s[i])*(p-i)};
+const median=a=>quant(a,.5);
+function gauss(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+function pois(l){if(l<=0)return 0;if(l>40)return Math.max(0,Math.round(l+Math.sqrt(l)*gauss()));const L=Math.exp(-l);let k=0,p=1;do{k++;p*=Math.random()}while(p>L);return k-1}
+const parseB=t=>{t=String(t).replace(/,/g,'').trim();const n=(t.match(/\d+/g)||[]).map(Number);if(t.startsWith('<'))return[0,n[0]-1];if(t.includes('+'))return[n[0],1e9];return[n[0],n[1]??n[0]]};
+const EVT=SNAP.evSummary;
+function simulate(m,h,R){const now=NOW(),from=Math.max(now,m.s),end=m.e,cur=m.cur;const rem=(end-from)/HR;
+  if(rem<=0)return{x:new Int32Array(1).fill(cur),L:1,rem:0,boost:0};
+  const kmin=Math.ceil((end-now)/DAY),an=[];for(let k=kmin;k<kmin+60;k++)an.push(R(from-k*DAY,end-k*DAY));
+  const l7=R(now-7*DAY,now)/7,l60=R(now-60*DAY,now)/60,L=1+S.set.w*((l60?l7/l60:1)-1);
+  let boost=S.set.boost;for(const t of S.ev){const e=EVT.find(x=>x.type===t);if(e)boost+=e.d48*Math.min(1,rem/48)}
+  const x=new Int32Array(20000);for(let i=0;i<x.length;i++)x[i]=cur+pois(Math.max(0,an[(Math.random()*an.length)|0]*L+boost));
+  return{x,L,rem,boost,an}}
+function svgBox(id){const f=$(id),s=f.querySelector('svg');return{s,W:f.clientWidth,H:f.clientHeight}}
+const T=(x,y,t,a='middle',c='var(--mut)',fs=12)=>`<text x="${x}" y="${y}" text-anchor="${a}" fill="${c}" font-size="${fs}" font-family="Geist,IBM Plex Sans Thai,sans-serif">${esc(t)}</text>`;
+function bars(id,vals,labels,o={}){const{s,W,H}=svgBox(id);if(!W)return;const pl=34,pb=24,pt=12,w=(W-pl-6)/vals.length,mx=Math.max(...vals,1e-9)*1.1;let g='';
+  for(let i=0;i<4;i++){const y=pt+(H-pt-pb)*i/4,v=mx*(1-i/4);g+=`<line x1="${pl}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--line)"/>`+T(pl-4,y+4,v<10?v.toFixed(1):Math.round(v),'end')}
+  vals.forEach((v,i)=>{const bh=(H-pt-pb)*v/mx,x=pl+i*w;g+=`<rect x="${x+1}" y="${H-pb-bh}" width="${Math.max(1,w-2)}" height="${bh}" fill="${o.col?o.col(i,v):'var(--ink)'}" rx="1"><title>${esc(labels[i])}: ${v.toFixed(2)}</title></rect>`;
+    const step=W<520?Math.ceil(vals.length/8):Math.ceil(vals.length/24);if(i%step===0)g+=T(x+w/2,H-6,labels[i])});s.innerHTML=g}
+const ro=new ResizeObserver(()=>drawAll());
+let cache={};
+function drawAll(){if(!cache.h)return;drawScale();drawTime();drawDay();drawMon()}
+
+/* ---------- market readout ---------- */
+function curMarket(){return S.tr[S.sel]}
+function renderTabs(){$('#tabs').innerHTML=S.tr.map((m,i)=>{const d=(m.e-m.s)/DAY;const lab=d<3?'48h':d<8?'7 วัน':'รายเดือน';return`<button aria-pressed="${i===S.sel}" data-i="${i}">${esc(m.short)} · ${lab}</button>`}).join('')}
+function shortTitle(t){return t.replace(/^Elon Musk #? ?(of )?tweets ?/i,'').replace(/\?$/,'').replace(/, 20\d\d/,'').replace(/^in /,'')}
+function nowcast(){const m=curMarket();if(!m)return;const h=cache.h,R=cache.R,now=NOW();m.cur=m.s<=now?exact(m.s,Math.min(now,m.e)):0;
+  if(S.official[m.id]!=null&&S.live)m.cur=Math.max(m.cur,S.official[m.id]);
+  const sim=simulate(m,h,R);cache.sim=sim;const x=sim.x,n=x.length;const pr=S.prices[m.slug]||[];
+  const B=pr.map(p=>{const[lo,hi]=parseB(p.t);let c=0;for(let i=0;i<n;i++)if(x[i]>=lo&&x[i]<=hi)c++;return{...p,lo,hi,pm:c/n}}).sort((a,b)=>a.lo-b.lo);cache.B=B;
+  const q=[.1,.5,.9].map(v=>quant(Array.from(x.subarray(0,4000)),v));
+  const left=Math.max(0,m.e-now),hrs=left/HR,el=Math.max(1e-6,(Math.min(now,m.e)-m.s)/DAY);
+  const curB=B.find(b=>m.cur>=b.lo&&m.cur<=b.hi),nxt=B.find(b=>b.lo>m.cur);
+  const lastPost=[...S.recent.values()].reduce((a,p)=>p.t<now?Math.max(a,p.t):a,0)||lastFromBins(h);
+  $('#readout').innerHTML=[
+   ['ยอดตอนนี้',m.cur,curB?`อยู่ใน bucket ${curB.t}`:''],
+   ['เหลือเวลา',`<span id="cd">${fmtLeft(left)}</span>`,`ปิด ${fICT.format(new Date(m.e+1000))} (ICT) · ${fET.format(new Date(m.e+1000))} ET`],
+   ['ต้องได้อีก',nxt?nxt.lo-m.cur:'—',nxt?`เพื่อเข้า ${nxt.t} · P = ${pct(nxt?probAtLeast(x,nxt.lo):0)}`:''],
+   ['คาดการณ์ปิดที่',`${Math.round(q[1])}`,`ช่วง 80%: ${Math.round(q[0])}–${Math.round(q[2])}`,1],
+   ['อัตราในตลาดนี้',(m.cur/el).toFixed(1)+'/วัน',`แนวโน้ม 7 วัน/60 วัน ×${sim.L.toFixed(2)}`],
+   ['เงียบมาแล้ว',lastPost?((now-lastPost)/HR).toFixed(1)+' ชม.':'—',lastPost?`โพสต์ล่าสุด ${fICT.format(new Date(lastPost))}`:'']
+  ].map(([a,b,c,hot])=>`<div class="${hot?'hot':''}"><span>${a}</span><b>${b}</b><span>${c}</span></div>`).join('');
+  const thr=S.set.thr/100;
+  $('#tblB').innerHTML=`<thead><tr><th>Bucket</th><th class="n">โมเดล P</th><th class="n">ซื้อ Yes (ask)</th><th class="n">ซื้อ No (1−bid)</th><th class="n">edge ดีที่สุด</th><th class="n">EV/$1</th><th class="n">Volume</th></tr></thead><tbody>`+
+   B.filter(b=>b.pm>.001||(b.mid??0)>.01||b===curB).map(b=>{const ask=b.ask??b.mid,noP=b.bid!=null?1-b.bid:(1-(b.mid??0));const eY=ask!=null?b.pm-ask:-1,eN=noP!=null?(1-b.pm)-noP:-1;const yes=eY>=eN,e=yes?eY:eN,ev=yes?(ask>0?b.pm/ask-1:0):(noP>0?(1-b.pm)/noP-1:0);
+    return`<tr class="${e>=thr?'edge':''}"><td><b>${esc(b.t)}</b>${b.hi<m.cur?' <span class="mut sm">(ผ่านแล้ว)</span>':''}</td><td class="n">${pct(b.pm)}</td><td class="n">${c(ask)}</td><td class="n">${c(noP)}</td><td class="n ${e>=thr?'pos':'neg'}">${e>-1?(yes?'Yes ':'No ')+(e*100>0?'+':'')+(e*100).toFixed(1)+'pp':'—'}</td><td class="n ${ev>0?'pos':'neg'}">${e>-1?(ev>0?'+':'')+ev.toFixed(2):'—'}</td><td class="n">${b.vol?'$'+Math.round(b.vol).toLocaleString():''}</td></tr>`}).join('')+'</tbody>';
+  const sug=SNAP.upcoming.concat(S.launches).filter(u=>{const t=Date.parse(u.d);return t>=now-DAY&&t<=m.e}).filter(u=>u.type);
+  $('#hint').innerHTML=(sug.length?`<div class="note">ในช่วงที่เหลือของตลาดนี้มี: ${sug.map(u=>`<b>${esc(u.t)}</b> (${esc(u.type)})`).join(' · ')} → พิจารณาติ๊กปรับด้านบน</div>`:'')+(!S.live?`<div class="note">โหมด SNAPSHOT: ข้อมูลและราคา ณ ${fICT.format(new Date(Date.parse(SNAP.snapTime)))} (เวลาไทย) — เปิดหน้านี้บน GitHub Pages เพื่อดึงข้อมูลสด</div>`:'');
+  drawScale()}
+const pct=p=>(p*100).toFixed(p<.1?1:0)+'%';const c=v=>v==null?'—':(v*100).toFixed(v<.1?1:0)+'¢';
+function probAtLeast(x,k){let c=0;for(let i=0;i<x.length;i++)if(x[i]>=k)c++;return c/x.length}
+function fmtLeft(ms){const d=Math.floor(ms/DAY),h=Math.floor(ms%DAY/HR),m=Math.floor(ms%HR/6e4);return(d?d+'ว ':'')+h+'ช '+String(m).padStart(2,'0')+'น'}
+function lastFromBins(h){for(let i=h.length-1;i>=0;i--)if(h[i])return S.t0+(i+.5)*HR;return 0}
+function drawScale(){const B=cache.B;const{s,W,H}=svgBox('#figScale');if(!B||!W)return;const m=curMarket();
+  let vis=B.filter(b=>b.pm>.003||(b.ask??b.mid??0)>.02||(m.cur>=b.lo&&m.cur<=b.hi));if(!vis.length)vis=B.slice(0,6);
+  const i0=B.indexOf(vis[0]),i1=B.indexOf(vis[vis.length-1]);vis=B.slice(Math.max(0,i0-1),Math.min(B.length,i1+2));
+  const pl=8,pb=44,pt=26,w=(W-pl*2)/vis.length,mx=Math.max(...vis.map(b=>Math.max(b.pm,b.ask??b.mid??0)),.05)*1.15,y=v=>H-pb-(H-pb-pt)*v/mx;let g=`<line x1="0" x2="${W}" y1="${H-pb}" y2="${H-pb}" stroke="var(--ink)" stroke-width="2"/>`;
+  vis.forEach((b,i)=>{const x=pl+i*w,pr=b.ask??b.mid??0,isCur=m.cur>=b.lo&&m.cur<=b.hi;
+   g+=`<rect x="${x+w*.18}" y="${y(b.pm)}" width="${w*.64}" height="${H-pb-y(b.pm)}" fill="var(--ink)" opacity="${b.hi<m.cur?.25:.9}" rx="2"/>`;
+   g+=`<line x1="${x+w*.08}" x2="${x+w*.92}" y1="${y(pr)}" y2="${y(pr)}" stroke="var(--acc)" stroke-width="4" stroke-linecap="round"/>`;
+   g+=T(x+w/2,Math.min(y(b.pm),y(pr))-8,W<520?Math.round(b.pm*100)+'':pct(b.pm)+' / '+c(pr),'middle','var(--ink)',W<520?11:12);
+   g+=`<line x1="${x}" x2="${x}" y1="${H-pb}" y2="${H-pb+8}" stroke="var(--ink)"/>`+T(x+w/2,H-pb+20,b.t,'middle',isCur?'var(--acc)':'var(--mut)',W<520?10:12);
+   if(isCur)g+=T(x+w/2,H-6,'▲ ตอนนี้ '+m.cur,'middle','var(--acc)',12)});
+  s.innerHTML=g}
+
+/* ---------- averages ---------- */
+function renderAvg(){const h=cache.h,R=cache.R,now=NOW(),d=cache.daily;const k=keys(h.length);
+  const noon=[];for(let i=0;i<h.length;i++)if(k[i][1]===12&&(i===0||k[i-1][1]!==12))noon.push(S.t0+i*HR);cache.noon=noon;
+  const win=(a,b,len)=>noon.filter(t=>t>=a&&t+len*DAY<=b).map(t=>R(t,t+len*DAY));
+  const rows=[];const now0=now;
+  for(const[lab,dd]of[['7 วันล่าสุด',7],['1 เดือนล่าสุด',30],['3 เดือนล่าสุด',90],['6 เดือนล่าสุด',180],['1 ปีล่าสุด',365]]){const a=Math.max(S.t0,now0-dd*DAY),days=(now0-a)/DAY,pd=R(a,now0)/days;const w2=win(a,now0,2),w7=win(a,now0,7);
+    rows.push([lab,'xtracker',pd,w2.length?`${Math.round(quant(w2,.1))}–${Math.round(quant(w2,.9))}`:'—',w7.length>2?`${Math.round(quant(w7,.1))}–${Math.round(quant(w7,.9))}`:'—',days<dd-1?`มีข้อมูล ${Math.round(days)} วัน`:''])}
+  const wk=SNAP.weeks.map(([s,lo,hi])=>{const H2=hi??Math.round(lo*1.15);return{t:Date.parse(s+'T17:00:00Z'),pd:(lo+H2)/14,hw:(H2-lo)/14}});
+  const rs=(a,b)=>{const x=wk.filter(w=>w.t>=a&&w.t<b);return x.length?{pd:x.reduce((s,w)=>s+w.pd,0)/x.length,hw:x.reduce((s,w)=>s+w.hw,0)/x.length,n:x.length}:null};
+  for(const[lab,back,dd]of[['1 เดือน · ช่วงเดียวกันปีก่อน',365,30],['1 เดือน · ช่วงเดียวกัน 2 ปีก่อน',730,30],['3 เดือน · 2 ปีก่อน',730,90],['1 ปีเต็ม · 2 ปีก่อน→1 ปีก่อน',365,365]]){const b=now0-back*DAY,a=b-dd*DAY;
+    if(a>=S.t0){rows.push([lab,'xtracker',R(a,b)/dd,'','',''])}else{const r=rs(a,b);if(r)rows.push([lab,`ผลตลาด ${r.n} สัปดาห์`,r.pd,'','',`± ${r.hw.toFixed(1)}/วัน`])}}
+  cache.avgRows=rows;const mx=Math.max(...rows.map(r=>r[2]));
+  $('#tblAvg').innerHTML=`<thead><tr><th>ช่วง</th><th>แหล่ง</th><th class="n">ต่อวัน</th><th class="n">ต่อ 48h</th><th class="n">ต่อ 7 วัน</th><th class="n">48h p10–p90</th><th class="n">7 วัน p10–p90</th><th>เทียบ</th><th>หมายเหตุ</th></tr></thead><tbody>`+
+   rows.map(r=>`<tr><td>${esc(r[0])}</td><td class="mut sm">${esc(r[1])}</td><td class="n"><b>${r[2].toFixed(1)}</b></td><td class="n">${(r[2]*2).toFixed(0)}</td><td class="n">${(r[2]*7).toFixed(0)}</td><td class="n">${r[3]}</td><td class="n">${r[4]}</td><td style="min-width:90px"><div style="height:8px;border-radius:4px;background:var(--ink);width:${(r[2]/mx*100).toFixed(0)}%"></div></td><td class="sm mut">${esc(r[5])}</td></tr>`).join('')+'</tbody>';
+  const r30=rows[1][2],r365=rows[4][2];$('#avgTitle').textContent=`1 เดือนล่าสุด ${r30.toFixed(1)} โพสต์/วัน — ${r30>=r365?'สูงกว่า':'ต่ำกว่า'}ค่าเฉลี่ย 1 ปี ${Math.abs((r30/r365-1)*100).toFixed(0)}%`;
+  $('#avgNote').textContent='ข้อมูล 2 ปีก่อนเป็นค่าประมาณจากกลาง bucket ของตลาดรายสัปดาห์ที่ปิดแล้ว (กติกานับแบบเดียวกัน แต่ช่วงนั้นใช้ xtracker.io)'}
+
+/* ---------- time patterns ---------- */
+function drawTime(){const h=cache.h,now=NOW(),n=h.length,days=S.tw,i0=Math.max(0,n-1-days*24);const hr=new Array(24).fill(0),dsum=new Array(7).fill(0),dcnt=new Array(7).fill(0);const dm=new Map();
+  for(let i=i0;i<n-1;i++){const t=S.t0+i*HR+7*HR,dt=new Date(t),hh=dt.getUTCHours();hr[hh]+=h[i];const key=Math.floor(t/DAY);dm.set(key,(dm.get(key)||0)+h[i])}
+  const nd=(n-1-i0)/24;for(const[kk,v]of dm){const wd=(new Date(kk*DAY).getUTCDay()+6)%7;dsum[wd]+=v;dcnt[wd]++}
+  const hv=hr.map(v=>v/nd),mean=hv.reduce((a,b)=>a+b)/24;
+  bars('#figHour',hv,hv.map((_,i)=>String(i).padStart(2,'0')),{col:(i,v)=>v>mean*1.25?'var(--acc)':'var(--ink)'});
+  const dv=dsum.map((v,i)=>dcnt[i]?v/dcnt[i]:0),dmn=dv.reduce((a,b)=>a+b)/7;bars('#figDow',dv,DOW,{col:(i,v)=>v>dmn*1.08?'var(--acc)':'var(--ink)'});
+  const top=hv.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]).slice(0,5).map(x=>x[1]).sort((a,b)=>a-b),low=hv.map((v,i)=>[v,i]).sort((a,b)=>a[0]-b[0]).slice(0,4).map(x=>x[1]).sort((a,b)=>a-b);
+  $('#hourNote').textContent=`พีค (สีส้ม > 1.25× ค่าเฉลี่ย): ${top.map(x=>x+':00').join(', ')} · ต่ำสุด: ${low.map(x=>x+':00').join(', ')} น. (ICT) · 12:00 ICT = เที่ยงคืน ET, 21:00 ICT = 9 โมงเช้า ET (ช่วงฤดูหนาว)`;
+  $('#timeTitle').textContent=`ชั่วโมงพีค (ICT): ${top.map(x=>x+':00').join(' · ')}`;
+  const hm=[...Array(7)].map(()=>new Array(24).fill(0)),hc=[...Array(7)].map(()=>new Array(24).fill(0));for(let i=Math.max(0,n-1-365*24);i<n-1;i++){const dt=new Date(S.t0+i*HR+7*HR),wd=(dt.getUTCDay()+6)%7,hh=dt.getUTCHours();hm[wd][hh]+=h[i];hc[wd][hh]++}
+  const hmv=hm.map((r,a)=>r.map((v,b)=>hc[a][b]?v/hc[a][b]:0)),mx=Math.max(...hmv.flat());
+  $('#heat').innerHTML='<div class="l"></div>'+[...Array(24)].map((_,i)=>`<div class="l" style="justify-content:center">${i%3?'':i}</div>`).join('')+hmv.map((r,a)=>`<div class="l">${DOW[a]}</div>`+r.map((v,b)=>`<div title="${DOW[a]} ${b}:00 · ${v.toFixed(2)}" style="background:color-mix(in srgb,var(--acc) ${Math.round(v/mx*100)}%,var(--card))"></div>`).join('')).join('')}
+function drawMon(){const{s,W,H}=svgBox('#figMon');if(!W)return;const d=cache.daily,mm=new Map();for(const[k,v]of d){const m=k.slice(0,7);const o=mm.get(m)||[0,0];o[0]+=v;o[1]++;mm.set(m,o)}
+  const wm=new Map();for(const[s0,lo,hi]of SNAP.weeks){const m=s0.slice(0,7),H2=hi??Math.round(lo*1.15),o=wm.get(m)||[0,0];o[0]+=(lo+H2)/14;o[1]++;wm.set(m,o)}
+  const all=[];for(const[m,o]of wm)if(m<'2025-11')all.push([m,o[0]/o[1],0]);for(const[m,o]of mm)all.push([m,o[0]/o[1],1]);all.sort((a,b)=>a[0]<b[0]?-1:1);
+  bars('#figMon',all.map(a=>a[1]),all.map(a=>a[0].slice(2).replace('-','/')),{col:i=>all[i][2]?'var(--ink)':'var(--mut)'})}
+
+/* ---------- anomalies ---------- */
+function anomalies(){const d=cache.daily,v=d.map(x=>x[1]);const out=d.map(([k,n],i)=>{const a=v.slice(Math.max(0,i-14),i+14);const b=a.length>=14?median(a):NaN;return{k,n,b,r:b?n/b:NaN}});cache.anom=out;
+  const ex=SNAP.expl;const row=o=>{const e=ex[o.k];const kw=!e?keywordsFor(o.k):'';return`<tr><td class="num">${o.k}</td><td class="n"><b>${o.n}</b></td><td class="n">${Math.round(o.b)}</td><td class="n">${o.r.toFixed(2)}×</td><td>${e?esc(e.t)+(e.s?` <a class="src" href="${esc(e.s)}" target="_blank" rel="noopener">แหล่งข่าว ↗</a>`:''):(kw?'<span class="mut">คำที่พบบ่อยในโพสต์:</span> '+esc(kw):'<span class="mut">ยังไม่มีคำอธิบาย</span>')}</td></tr>`};
+  const head='<thead><tr><th>วันที่ (ET)</th><th class="n">โพสต์</th><th class="n">ฐาน</th><th class="n">เท่า</th><th>เกิดอะไรขึ้น</th></tr></thead><tbody>';
+  const ok=out.filter(o=>o.b>=10);$('#tblHi').innerHTML=head+ok.filter(o=>o.r>=1.8).sort((a,b)=>b.r-a.r).slice(0,14).map(row).join('')+'</tbody>';
+  $('#tblLo').innerHTML=head+ok.filter(o=>o.r<=.4).sort((a,b)=>a.r-b.r).slice(0,10).map(row).join('')+'</tbody>'}
+const STOP=new Set('the a an and or of to in is it this that for on with be are was as at by from you we i my our your not have has will just but so can its it’s they all more than very what about would like who one do if no yes good great true wow exactly rt https amp been get much most now new over out up when how why there their them he she his her too only also make made being some any these those me us which into then going said even still'.split(' '));
+function keywordsFor(k){const ps=[...S.recent.values()].filter(p=>fKey.format(new Date(p.t)).slice(0,10)===k);if(!ps.length)return'';const wc={};for(const p of ps)for(const w of p.c.toLowerCase().replace(/https?:\S+/g,'').match(/[a-z][a-z0-9'’]{2,}/g)||[])if(!STOP.has(w))wc[w]=(wc[w]||0)+1;return Object.entries(wc).sort((a,b)=>b[1]-a[1]).slice(0,8).map(x=>x[0]).join(', ')}
+function drawDay(){const a=(cache.anom||[]).slice(-S.dayWin);const{s,W,H}=svgBox('#figDay');if(!W||!a.length)return;const pl=34,pb=22,pt=10,mx=Math.max(...a.map(o=>o.n))*1.08,x=i=>pl+(W-pl-8)*i/(a.length-1),y=v=>H-pb-(H-pb-pt)*v/mx;let g='';
+  for(let i=0;i<4;i++){const v=mx*i/4;g+=`<line x1="${pl}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/>`+T(pl-4,y(v)+4,Math.round(v),'end')}
+  g+=`<polyline fill="none" stroke="var(--ink)" stroke-width="1.5" points="${a.map((o,i)=>x(i)+','+y(o.n)).join(' ')}"/>`;
+  g+=`<polyline fill="none" stroke="var(--mut)" stroke-dasharray="4 3" points="${a.filter(o=>o.b).map(o=>x(a.indexOf(o))+','+y(o.b)).join(' ')}"/>`;
+  a.forEach((o,i)=>{if(o.b>=10&&(o.r>=1.8||o.r<=.4))g+=`<circle cx="${x(i)}" cy="${y(o.n)}" r="4" fill="${o.r>1?'var(--acc)':'var(--bg)'}" stroke="var(--acc)" stroke-width="2"><title>${o.k}: ${o.n}</title></circle>`;if(o.k.endsWith('-01'))g+=T(x(i),H-5,o.k.slice(2,7).replace('-','/'))});
+  g+=T(W-6,pt+12,'— รายวัน   - - ฐาน 28 วัน   ● ผิดปกติ','end');s.innerHTML=g}
+
+/* ---------- events ---------- */
+function renderEvents(){$('#tblEv').innerHTML='<thead><tr><th>ประเภท</th><th class="n">วันนั้น ×ฐาน</th><th class="n">48h ±โพสต์</th><th class="n">n</th><th>ตัวอย่าง</th></tr></thead><tbody>'+EVT.map(e=>`<tr><td>${esc(e.th)}</td><td class="n">${e.r1.toFixed(2)}×</td><td class="n ${e.d48>0?'pos':''}">${e.d48>0?'+':''}${Math.round(e.d48)}</td><td class="n">${e.n}</td><td class="sm mut">${esc(e.ex)}</td></tr>`).join('')+'</tbody>';
+  const now=NOW(),up=SNAP.upcoming.concat(S.launches).filter(u=>Date.parse(u.d)>=now-DAY).sort((a,b)=>Date.parse(a.d)-Date.parse(b.d)).slice(0,14);
+  $('#tblUp').innerHTML='<thead><tr><th>วันที่</th><th>อีเวนต์</th><th>คาดผล</th></tr></thead><tbody>'+up.map(u=>{const e=EVT.find(x=>x.type===u.type);return`<tr><td class="num">${esc(u.d.slice(0,10))}${u.est?' <span class="mut sm">(ประมาณ)</span>':''}</td><td>${esc(u.t)}${u.s?` <a class="src" href="${esc(u.s)}" target="_blank" rel="noopener">↗</a>`:''}</td><td class="n">${e?(e.d48>0?'+':'')+Math.round(e.d48)+'/48h':'—'}</td></tr>`}).join('')+'</tbody>';
+  $('#chips').innerHTML=EVT.map(e=>`<label><input type="checkbox" value="${esc(e.type)}" ${S.ev.has(e.type)?'checked':''}>${esc(e.th)} <span class="mut num">${e.d48>0?'+':''}${Math.round(e.d48)}</span></label>`).join('');
+  const nw=S.news;$('#news').innerHTML=nw&&nw.items?.length?`<p class="mut">อัปเดต ${fICT.format(new Date(nw.updated))} · จาก Google News</p>`+nw.items.slice(0,12).map(i=>`<p><a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a> <span class="mut">· ${esc(i.source||'')} · ${fICT.format(new Date(i.date))}</span></p>`).join(''):
+   `<p class="mut">ฟีดข่าวอัตโนมัติจะแสดงเมื่อโฮสต์บน GitHub (GitHub Action ดึงข่าวทุกชั่วโมง) · ระหว่างนี้: <a href="https://news.google.com/search?q=Elon%20Musk&hl=en-US" target="_blank" rel="noopener">Google News: Elon Musk</a> · <a href="https://x.com/elonmusk" target="_blank" rel="noopener">x.com/elonmusk</a> · <a href="https://www.rocketlaunch.live/?filter=spacex" target="_blank" rel="noopener">SpaceX launch schedule</a></p>`}
+function renderFeed(){const now=NOW();const ps=[...S.recent.values()].filter(p=>p.t<now).sort((a,b)=>b.t-a.t).slice(0,25);
+  $('#feed').innerHTML=ps.length?ps.map(p=>`<div><time>${fICT.format(new Date(p.t))} ICT</time>${esc(p.c)}</div>`).join(''):'<div class="mut">ยังไม่มีโพสต์ใหม่ที่ดึงมา (ต้องเปิดแบบ live)</div>';
+  const h=cache.h;let gaps=[],last=-1;for(let i=Math.max(0,h.length-24*60);i<h.length;i++)if(h[i]){if(last>=0&&i-last>1)gaps.push(i-last);last=i}
+  const lp=ps[0]?.t||lastFromBins(h);$('#silence').textContent=lp?`เงียบมา ${((now-lp)/HR).toFixed(1)} ชม. · ช่วงเงียบ ≥2 ชม. ใน 60 วันล่าสุด: มัธยฐาน ${median(gaps.filter(g=>g>=2)).toFixed(0)} ชม., p90 ${quant(gaps.filter(g=>g>=2),.9).toFixed(0)} ชม. (ช่วงที่โพสต์น้อยสุดมักอยู่ราว 16:00–20:00 ICT)`:''}
+
+/* ---------- data refresh ---------- */
+async function loadTrackings(){if(S.live){try{const u=await getJSON(`${XT}/users/elonmusk?platform=X`);const now=Date.now();
+   S.tr=u.data.trackings.filter(t=>t.isActive&&Date.parse(t.endDate)>now&&t.marketLink).map(t=>({id:t.id,title:t.title,short:shortTitle(t.title),s:Date.parse(t.startDate),e:Date.parse(t.endDate),slug:t.marketLink.split('/').filter(Boolean).pop()})).sort((a,b)=>a.e-b.e);return}catch(e){S.live=false}}
+  S.tr=SNAP.markets.map(m=>({id:m.slug,title:m.title,short:shortTitle(m.title),s:Date.parse(m.start),e:Date.parse(m.end),slug:m.slug}));for(const m of SNAP.markets)S.prices[m.slug]=m.markets.map(([t,bid,ask,mid,vol])=>({t,bid,ask,mid,vol}))}
+async function loadPrices(m){if(!S.live||!m)return;try{const j=await getJSON(`${GM}/events?slug=${encodeURIComponent(m.slug)}`);const ev=j[0];if(!ev)return;
+  S.prices[m.slug]=ev.markets.map(x=>{let op=[];try{op=JSON.parse(x.outcomePrices||'[]')}catch(e){}const n=v=>v==null||v===''?null:+v;return{t:x.groupItemTitle,bid:n(x.bestBid),ask:n(x.bestAsk),mid:op.length?+op[0]:null,vol:+(x.volume||0)}})}catch(e){}
+  try{const j=await getJSON(`${XT}/trackings/${m.id}?includeStats=true`);if(j.data?.stats?.total!=null)S.official[m.id]=j.data.stats.total}catch(e){}}
+async function loadSide(){try{const j=await getJSON('data/news.json',8000);S.news=j}catch(e){}
+  const c=store.get('etxLL');if(c&&Date.now()-c.t<HR){S.launches=c.v;return}
+  try{const j=await getJSON('data/launches.json',8000);S.launches=j.items||[]}catch(e){try{const j=await getJSON(`${LL}/launch/upcoming/?search=starship&limit=6`);S.launches=(j.results||[]).map(r=>({d:r.net,t:r.name+(r.status?.abbrev?` · ${r.status.abbrev}`:''),type:'Starship launch',est:r.status?.abbrev!=='Go'}))}catch(e){}}
+  store.set('etxLL',{t:Date.now(),v:S.launches})}
+function compute(){const h=series();cache.h=h;cache.R=mkR(h);cache.daily=daily(h)}
+function renderAll(){compute();renderTabs();nowcast();renderAvg();drawTime();drawMon();anomalies();drawDay();renderEvents();renderFeed();
+  $('#dot').className='dot'+(S.live?' live':'');$('#stat').textContent=S.live?`LIVE · อัปเดต ${fICT.format(new Date(S.last||Date.now()))} ICT`:`SNAPSHOT · ${fICT.format(new Date(Date.parse(SNAP.snapTime)))} ICT`}
+let timer;async function cycle(full){clearTimeout(timer);$('#stat').textContent='กำลังดึงข้อมูล…';
+  try{S.live=true;if(full)await tryHourlyFile();await refreshPosts();S.last=Date.now()}catch(e){S.live=false}
+  if(full||!S.tr.length){const prev=curMarket()?.slug;await loadTrackings();const k=S.tr.findIndex(m=>m.slug===prev);S.sel=k>=0?k:Math.max(0,S.tr.findIndex(m=>m.s<=NOW()))}await loadPrices(curMarket());if(full)await loadSide();renderAll();
+  timer=setTimeout(()=>cycle(false),S.set.refresh*6e4)}
+let tick=0;setInterval(()=>{const m=curMarket(),el=$('#cd');if(m&&el)el.textContent=fmtLeft(Math.max(0,m.e-NOW()));if(S.live&&++tick%3600===0)cycle(true)},1000);
+
+/* ---------- controls ---------- */
+$('#tabs').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;S.sel=+b.dataset.i;renderTabs();await loadPrices(curMarket());nowcast()});
+$('#tw').innerHTML=[30,90,365].map(d=>`<button aria-pressed="${d===S.tw}" data-d="${d}">${d} วัน</button>`).join('');
+$('#tw').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.tw=+b.dataset.d;[...$('#tw').children].forEach(x=>x.setAttribute('aria-pressed',x===b));drawTime()});
+$('#chips').addEventListener('change',e=>{const v=e.target.value;e.target.checked?S.ev.add(v):S.ev.delete(v);nowcast()});
+for(const[id,k]of[['#boost','boost'],['#wgt','w'],['#thr','thr']])$(id).addEventListener('change',e=>{S.set[k]=+e.target.value||0;save();nowcast()});
+$('#refresh').addEventListener('change',e=>{S.set.refresh=+e.target.value;save();cycle(false)});
+$('#btnNow').addEventListener('click',()=>cycle(true));
+for(const id of['#figScale','#figHour','#figDow','#figMon','#figDay'])ro.observe($(id));
+loadCache();$('#refresh').value=S.set.refresh;$('#wgt').value=S.set.w;$('#thr').value=S.set.thr;$('#boost').value=S.set.boost;
+S.live=false;loadTrackings().then(()=>{const i=S.tr.findIndex(m=>m.s<=NOW());S.sel=Math.max(0,i);renderAll();cycle(true)});
+}
+</script>
+</body>
+</html>

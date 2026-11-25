@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Elon Tweet Edge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;700&family=Geist+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: a trading-desk instrument — terse, numeric, decision first.
+   IDEA: a precision gauge: one long bucket scale with the market's price needle vs. the model's reading.
+   PICTURE: bucket columns (model probability) with orange price ticks; current count + projection on the scale.
+   COLOUR and TYPE: aluminium ground, black ink, orange #ff4f00 pointer; night #141517. Geist + IBM Plex Sans Thai.
+   LAYOUT: readout row, then the scale, then the bucket table; analysis bands below. */
+:root{color-scheme:light dark;--bg:light-dark(#e9eaec,#141517);--card:light-dark(#f7f7f8,#1c1d21);--ink:light-dark(#121314,#ecedef);--mut:light-dark(#62656b,#9a9da4);--line:light-dark(#cfd1d5,#2c2e33);--acc:#ff4f00;--accs:light-dark(#ffe4d6,#3a1f12);--good:light-dark(#0b6b4a,#5fd3a5)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Geist,"IBM Plex Sans Thai",system-ui,sans-serif;overflow-x:clip}
+.band{padding:clamp(20px,3vw,40px) max(4vw,14px);max-width:1280px;margin:0 auto}
+h1{font-size:clamp(26px,4vw,40px);line-height:1.05;margin:0;font-weight:700;text-wrap:balance}
+h2{font-size:clamp(21px,2.6vw,28px);line-height:1.1;margin:0 0 6px;font-weight:700;text-wrap:balance}
+h3{font-size:16px;margin:18px 0 6px}
+p{margin:6px 0}.mut{color:var(--mut)}.sm{font-size:13px}
+.num,td.n,th.n{font-family:"Geist Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
+.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:end;justify-content:space-between;border-bottom:2px solid var(--ink)}
+.status{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:14px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--mut);display:inline-block}.dot.live{background:var(--acc);animation:p 2s infinite}
+@keyframes p{50%{opacity:.35}}@media(prefers-reduced-motion:reduce){.dot.live{animation:none}}
+select,input,button{font:inherit;font-size:16px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;min-height:44px;padding:0 10px}
+button{cursor:pointer}button:focus-visible,select:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}.tabs button{flex:none}
+.tabs button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.read{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:14px 0}
+.read div{background:var(--card);padding:12px 14px}.read b{display:block;font:500 clamp(24px,3.4vw,36px)/1.1 "Geist Mono",monospace}.read span{font-size:13px;color:var(--mut)}
+.read .hot b{color:var(--acc)}
+.fig{position:relative;min-height:300px}.fig>svg{position:absolute;inset:0;width:100%;height:100%}
+.fig.s{min-height:220px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:16px}
+table{border-collapse:collapse;width:100%;font-size:15px}th,td{padding:8px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-weight:500;color:var(--mut);font-size:13px}td.n,th.n{text-align:right}
+tr.edge td{background:var(--accs)}tr.edge td:first-child{box-shadow:inset 3px 0 var(--acc)}
+.pos{color:var(--acc);font-weight:600}.neg{color:var(--mut)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chips label{display:flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:999px;padding:0 12px;min-height:44px;background:var(--card);font-size:14px;cursor:pointer}
+.chips input{min-height:0;padding:0;width:18px;height:18px;flex:none;accent-color:var(--acc)}
+.ctrl{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:10px 0}.ctrl label{display:grid;gap:4px;font-size:13px;color:var(--mut)}
+.ctrl input[type=number]{width:110px}
+.note{border-left:3px solid var(--acc);padding:6px 12px;background:var(--card);margin:10px 0;font-size:14px}
+.heat{display:grid;grid-template-columns:44px repeat(24,minmax(0,1fr));gap:2px;font-size:11px}
+.heat div{height:22px;border-radius:3px;display:flex;align-items:center;justify-content:center}
+.heat .l{justify-content:flex-start;color:var(--mut)}
+.feed{display:grid;gap:8px;max-height:520px;overflow:auto}.feed div{border-bottom:1px solid var(--line);padding:6px 0;font-size:14px}.feed time{color:var(--mut);font-size:12px;display:block}
+a{color:inherit}a.src{color:var(--mut);font-size:13px}
+details summary{cursor:pointer;min-height:44px;display:flex;align-items:center}
+pre,.scroll{overflow-x:auto}code{overflow-wrap:anywhere;font-family:"Geist Mono",monospace;font-size:13px}
+.nav{display:flex;gap:16px;overflow-x:auto;font-size:14px;padding:8px max(4vw,14px);max-width:1280px;margin:0 auto}.nav a{flex:none;text-decoration:none;color:var(--mut)}
+@media(min-width:900px){.nav{position:sticky;top:0;background:var(--bg);z-index:2}}
+html{scroll-padding-top:56px}
+@media(max-width:600px){table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:8em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7.5em;margin-inline-start:-8em;white-space:normal;color:var(--mut)}.stack td:empty{display:none}}
+</style>
+<script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document,{childList:true,subtree:true})</script>
+</head>
+<body>
+<header class="band top">
+  <div><h1 id="headline">Elon Musk tweet counter · edge finder</h1>
+  <p class="mut sm">นับตามกติกา Polymarket: main feed posts + quote posts + reposts (ไม่นับ replies) จาก xtracker Post Counter</p></div>
+  <div class="status"><span class="dot" id="dot"></span><span id="stat">กำลังโหลด…</span>
+    <label class="sm mut">รีเฟรชทุก <select id="refresh" aria-label="รอบรีเฟรช"><option value="5">5 นาที</option><option value="15">15 นาที</option><option value="60">60 นาที</option></select></label>
+    <button id="btnNow">อัปเดตเดี๋ยวนี้</button></div>
+</header>
+<nav class="nav scroll" aria-label="sections"><a href="#now">ตลาดตอนนี้</a><a href="#avg">ค่าเฉลี่ย</a><a href="#time">ช่วงเวลา</a><a href="#anom">วันผิดปกติ</a><a href="#events">อีเวนต์</a><a href="#posts">โพสต์ล่าสุด</a><a href="#method">วิธีคิด</a></nav>
+
+<section class="band" id="now">
+  <div class="tabs" id="tabs" role="group" aria-label="เลือกตลาด"></div>
+  <div class="read" id="readout"></div>
+  <div class="card"><div class="fig" id="figScale"><svg></svg></div>
+  <p class="sm mut">แท่งดำ = ความน่าจะเป็นจากโมเดล · ขีดส้ม = ราคา Yes ในตลาด (ask) · แท่งที่ดำสูงกว่าขีดส้ม = ตลาดอาจตั้งราคาต่ำไป</p></div>
+  <div class="ctrl">
+    <div><div class="sm mut" style="margin-bottom:4px">ปรับตามอีเวนต์ที่จะเกิดในช่วงที่เหลือ (ค่าเฉลี่ยผลต่อ 48h จากอดีต)</div><div class="chips" id="chips"></div></div>
+    <label>ปรับเอง (± โพสต์)<input type="number" id="boost" value="0" step="1"></label>
+    <label>น้ำหนักแนวโน้ม 7 วัน (0–1)<input type="number" id="wgt" value="0.5" min="0" max="1" step="0.1"></label>
+    <label>เกณฑ์ edge (pp)<input type="number" id="thr" value="5" min="1" step="1"></label>
+  </div>
+  <div id="hint"></div>
+  <div class="scroll"><table class="stack" id="tblB"></table></div>
+  <p class="sm mut">edge = ความน่าจะเป็นของโมเดล − ราคาที่ซื้อได้จริง (หน่วย pp – percentage points / จุดเปอร์เซ็นต์) · EV (Expected Value – ค่าคาดหวัง) ต่อเงิน $1 · ไม่ใช่คำแนะนำทางการเงิน: โมเดลไม่รู้ข่าวที่ยังไม่เกิด</p>
+</section>
+
+<section class="band" id="avg">
+  <h2 id="avgTitle">ค่าเฉลี่ยเทียบกันได้ (หน่วยเดียวกัน)</h2>
+  <p class="mut sm">ทุกแถวแปลงเป็น “ต่อวัน / ต่อ 48h (48 ชั่วโมง) / ต่อ 7 วัน” · p10–p90 (เปอร์เซ็นไทล์ที่ 10–90: ช่วงที่ 80% ของหน้าต่างตกอยู่) นับจากหน้าต่างที่เริ่มเที่ยง ET (Eastern Time – เวลาตะวันออกสหรัฐฯ) แบบเดียวกับตลาด</p>
+  <div class="scroll"><table class="stack" id="tblAvg"></table></div>
+  <p class="sm mut" id="avgNote"></p>
+</section>
+
+<section class="band" id="time">
+  <h2 id="timeTitle">ช่วงเวลาที่โพสต์เยอะ (เวลาไทย ICT – Indochina Time)</h2>
+  <div class="tabs" id="tw" role="group" aria-label="ช่วงข้อมูล"></div>
+  <div class="grid2">
+    <div class="card"><h3>เฉลี่ยโพสต์ต่อชั่วโมง ตามชั่วโมงของวัน</h3><div class="fig s" id="figHour"><svg></svg></div><p class="sm mut" id="hourNote"></p></div>
+    <div class="card"><h3>เฉลี่ยโพสต์ต่อวัน ตามวันในสัปดาห์</h3><div class="fig s" id="figDow"><svg></svg></div></div>
+  </div>
+  <div class="card" style="margin-top:16px"><h3>แผนที่ความร้อน วัน × ชั่วโมง (ICT, 365 วัน)</h3><div class="scroll"><div class="heat" id="heat" style="min-width:640px"></div></div></div>
+  <div class="card" style="margin-top:16px"><h3>รายเดือน (โพสต์/วัน)</h3><div class="fig s" id="figMon"><svg></svg></div><p class="sm mut">สีเทา = ประมาณจากผลตลาดรายสัปดาห์ที่ปิดแล้ว (กลาง bucket) · สีดำ = นับจริงจาก xtracker · เดือนปัจจุบันยังไม่ครบ</p></div>
+</section>
+
+<section class="band" id="anom">
+  <h2>วัน/สัปดาห์ที่สูงหรือต่ำผิดปกติ และเหตุผลเบื้องหลัง</h2>
+  <p class="mut sm">ฐาน = ค่ามัธยฐาน 28 วันรอบวันนั้น · ผิดปกติ = ≥1.8× หรือ ≤0.4× ของฐาน · วันตาม ET</p>
+  <div class="card"><div class="fig" id="figDay"><svg></svg></div></div>
+  <div class="grid2" style="margin-top:16px"><div><h3>สูงผิดปกติ</h3><div class="scroll"><table class="stack" id="tblHi"></table></div></div><div><h3>ต่ำผิดปกติ</h3><div class="scroll"><table class="stack" id="tblLo"></table></div></div></div>
+</section>
+
+<section class="band" id="events">
+  <h2>อีเวนต์ → ผลต่อจำนวนโพสต์</h2>
+  <div class="grid2">
+    <div><h3>ผลเฉลี่ยในอดีต (วันนั้น + วันถัดไป เทียบฐาน)</h3><div class="scroll"><table class="stack" id="tblEv"></table></div><p class="sm mut">ตัวอย่างน้อย (n = จำนวนเหตุการณ์) ใช้เป็นจุดตั้งต้น แล้วปรับเองด้วยวิจารณญาณ</p></div>
+    <div><h3>ปฏิทินที่กำลังจะมาถึง</h3><div class="scroll"><table class="stack" id="tblUp"></table></div></div>
+  </div>
+  <h3>ข่าวล่าสุด</h3><div id="news" class="card sm"></div>
+</section>
+
+<section class="band" id="posts">
+  <h2>โพสต์ล่าสุด</h2><p class="mut sm" id="silence"></p>
+  <div class="card feed" id="feed"></div>
+</section>
+
+<section class="band" id="method">
+  <h2>วิธีคิดของโมเดล</h2>
+  <p>สำหรับเวลาที่เหลือของตลาด ระบบดูย้อนหลัง 60 วันว่า “ช่วงเวลาเดียวกันของวัน” เคยมีกี่โพสต์ แล้วสุ่มจำลอง 20,000 รอบ คูณด้วยแนวโน้มล่าสุด (อัตรา 7 วัน ÷ 60 วัน ถ่วงน้ำหนัก 0.5) บวกผลอีเวนต์ที่เลือก แล้วบวกกับยอดปัจจุบัน → ได้ความน่าจะเป็นของแต่ละ bucket</p>
+  <div class="scroll"><table class="stack"><thead><tr><th>ทดสอบย้อนหลัง (ม.ค.–พ.ย. 2026)</th><th class="n">จำนวนตลาด</th><th class="n">ครอบคลุมช่วง 80%</th><th class="n">P เฉลี่ยของ bucket ที่ถูก</th></tr></thead><tbody>
+  <tr><td>48h · ตอนเปิดตลาด</td><td class="n">135</td><td class="n">85%</td><td class="n">27%</td></tr>
+  <tr><td>48h · ผ่านไป 50%</td><td class="n">135</td><td class="n">85%</td><td class="n">40%</td></tr>
+  <tr><td>48h · ผ่านไป 90%</td><td class="n">135</td><td class="n">90%</td><td class="n">69%</td></tr>
+  <tr><td>7 วัน · ผ่านไป 50%</td><td class="n">89</td><td class="n">80%</td><td class="n">14%</td></tr>
+  <tr><td>7 วัน · ผ่านไป 90%</td><td class="n">89</td><td class="n">91%</td><td class="n">42%</td></tr></tbody></table></div>
+  <p class="sm mut">ช่วง 80% ครอบคลุมผลจริง ~80–90% และค่ากลางไม่เอียง (ค่า PIT เฉลี่ย ≈ 0.49) = โมเดลไม่มั่นใจเกินจริง · จุดอ่อน: เดาข่าวใหญ่ล่วงหน้าไม่ได้ และเวลาที่ Musk เดินทางข้ามเขตเวลา (เช่น เอเชีย) รูปแบบรายชั่วโมงจะเลื่อน</p>
+  <p class="sm mut">แหล่งข้อมูล: <a href="https://xtracker.polymarket.com">xtracker.polymarket.com</a> (API – Application Programming Interface สาธารณะ) · <a href="https://polymarket.com">Polymarket</a> (ราคาจาก gamma-api) · ข้อมูลก่อน พ.ย. 2025 ประมาณจากผลตลาดรายสัปดาห์ที่ปิดแล้ว (± ครึ่งความกว้าง bucket) · ปฏิทิน Starship จาก Launch Library 2</p>
+</section>
+
+<script>
+/*__DATA__*/
+</script>
+<script>
+{
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const HR=36e5,DAY=864e5,XT='https://xtracker.polymarket.com/api',GM='https://gamma-api.polymarket.com',LL='https://ll.thespacedevs.com/2.2.0';
+const fICT=new Intl.DateTimeFormat('th-TH',{timeZone:'Asia/Bangkok',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+const fET=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+const fKey=new Intl.DateTimeFormat('en-CA',{timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'});
+const DOW=['จ.','อ.','พ.','พฤ.','ศ.','ส.','อา.'];
+const decode=e=>{const o=[],re=/\{(\d+)\}|./g;let m;while(m=re.exec(e))o.push(m[1]?+m[1]:parseInt(m[0],36));return o};
+const encode=a=>a.map(v=>v<36?v.toString(36):`{${v}}`).join('');
+const S={t0:Date.parse(SNAP.t0),bins:decode(SNAP.enc),recent:new Map(),live:false,tr:[],sel:0,prices:{},official:{},launches:[],news:null,last:null,tw:90,dayWin:180,ev:new Set(),
+  set:{refresh:15,w:.5,thr:5,boost:0}};
+S.fz=S.t0+S.bins.length*HR;
+const NOW=()=>S.live?Date.now():Date.parse(SNAP.snapTime);
+const store={get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+function loadCache(){const c=store.get('etx1');if(!c||c.t0!==SNAP.t0)return;const b=decode(c.enc);if(b.length>=S.bins.length){S.bins=b;S.fz=S.t0+b.length*HR;for(const[id,t,x]of c.rec||[])if(t>=S.fz)S.recent.set(id,{t,c:x})}Object.assign(S.set,c.set||{})}
+function save(){store.set('etx1',{t0:SNAP.t0,enc:encode(S.bins),rec:[...S.recent].map(([id,p])=>[id,p.t,p.c]),set:S.set})}
+async function getJSON(u,ms=20000){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),ms);try{const r=await fetch(u,{signal:ac.signal});if(!r.ok)throw Error(r.status);return await r.json()}finally{clearTimeout(t)}}
+function fold(){const cut=Math.floor((Date.now()-3*DAY)/HR)*HR;if(cut<=S.fz)return;const n=(cut-S.t0)/HR;while(S.bins.length<n)S.bins.push(0);for(const[id,p]of S.recent)if(p.t<cut){S.bins[Math.floor((p.t-S.t0)/HR)]++;S.recent.delete(id)}S.fz=cut}
+async function refreshPosts(){const now=Date.now();let f=S.fz;const got=[];while(f<now){const to=Math.min(f+15*DAY,now+HR);const j=await getJSON(`${XT}/users/elonmusk/posts?platform=X&startDate=${new Date(f).toISOString()}&endDate=${new Date(to).toISOString()}`);got.push(...(j.data||[]));f=to}
+  for(const p of got){const t=Date.parse(p.createdAt);if(t>=S.fz)S.recent.set(p.id,{t,c:String(p.content||'').slice(0,300)})}fold();save()}
+async function tryHourlyFile(){try{const j=await getJSON('data/hourly.json',8000);if(j.t0===SNAP.t0){const b=decode(j.enc);if(b.length>S.bins.length){S.bins=b;const nf=S.t0+b.length*HR;for(const[id,p]of S.recent)if(p.t<nf)S.recent.delete(id);S.fz=nf}}}catch(e){}}
+function series(){const n=Math.floor((NOW()-S.t0)/HR)+1,h=S.bins.slice(0,n);while(h.length<n)h.push(0);for(const p of S.recent.values()){const i=Math.floor((p.t-S.t0)/HR);if(i>=0&&i<n&&p.t<NOW())h[i]++}return h}
+function mkR(h){const P=[0];for(const v of h)P.push(P[P.length-1]+v);const at=ms=>{const x=(ms-S.t0)/HR;if(x<=0)return 0;if(x>=h.length)return P[h.length];const i=Math.floor(x);return P[i]+h[i]*(x-i)};return(a,b)=>at(b)-at(a)}
+function exact(a,b){let n=0;const fz=Math.min(S.fz,b);if(a<fz){const i0=Math.max(0,Math.round((a-S.t0)/HR)),i1=Math.round((fz-S.t0)/HR);for(let i=i0;i<i1;i++)n+=S.bins[i]||0}for(const p of S.recent.values())if(p.t>=Math.max(a,S.fz)&&p.t<b)n++;return n}
+const keysCache={n:0,k:[]};
+function keys(n){if(keysCache.n<n){for(let i=keysCache.n;i<n;i++){const s=fKey.format(new Date(S.t0+i*HR));keysCache.k.push([s.slice(0,10),+s.slice(-2)%24])}keysCache.n=n}return keysCache.k}
+function daily(h){const k=keys(h.length),m=new Map();h.forEach((v,i)=>m.set(k[i][0],(m.get(k[i][0])||0)+v));const a=[...m];a.pop();return a.slice(1)}
+const quant=(arr,q)=>{if(!arr.length)return NaN;const s=[...arr].sort((a,b)=>a-b),p=(s.length-1)*q,i=Math.floor(p);return s[i]+(s[Math.min(i+1,s.length-1)]-s[i])*(p-i)};
+const median=a=>quant(a,.5);
+function gauss(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+function pois(l){if(l<=0)return 0;if(l>40)return Math.max(0,Math.round(l+Math.sqrt(l)*gauss()));const L=Math.exp(-l);let k=0,p=1;do{k++;p*=Math.random()}while(p>L);return k-1}
+const parseB=t=>{t=String(t).replace(/,/g,'').trim();const n=(t.match(/\d+/g)||[]).map(Number);if(t.startsWith('<'))return[0,n[0]-1];if(t.includes('+'))return[n[0],1e9];return[n[0],n[1]??n[0]]};
+const EVT=SNAP.evSummary;
+function simulate(m,h,R){const now=NOW(),from=Math.max(now,m.s),end=m.e,cur=m.cur;const rem=(end-from)/HR;
+  if(rem<=0)return{x:new Int32Array(1).fill(cur),L:1,rem:0,boost:0};
+  const kmin=Math.ceil((end-now)/DAY),an=[];for(let k=kmin;k<kmin+60;k++)an.push(R(from-k*DAY,end-k*DAY));
+  const l7=R(now-7*DAY,now)/7,l60=R(now-60*DAY,now)/60,L=1+S.set.w*((l60?l7/l60:1)-1);
+  let boost=S.set.boost;for(const t of S.ev){const e=EVT.find(x=>x.type===t);if(e)boost+=e.d48*Math.min(1,rem/48)}
+  const x=new Int32Array(20000);for(let i=0;i<x.length;i++)x[i]=cur+pois(Math.max(0,an[(Math.random()*an.length)|0]*L+boost));
+  return{x,L,rem,boost,an}}
+function svgBox(id){const f=$(id),s=f.querySelector('svg');return{s,W:f.clientWidth,H:f.clientHeight}}
+const T=(x,y,t,a='middle',c='var(--mut)',fs=12)=>`<text x="${x}" y="${y}" text-anchor="${a}" fill="${c}" font-size="${fs}" font-family="Geist,IBM Plex Sans Thai,sans-serif">${esc(t)}</text>`;
+function bars(id,vals,labels,o={}){const{s,W,H}=svgBox(id);if(!W)return;const pl=34,pb=24,pt=12,w=(W-pl-6)/vals.length,mx=Math.max(...vals,1e-9)*1.1;let g='';
+  for(let i=0;i<4;i++){const y=pt+(H-pt-pb)*i/4,v=mx*(1-i/4);g+=`<line x1="${pl}" x2="${W}" y1="${y}" y2="${y}" stroke="var(--line)"/>`+T(pl-4,y+4,v<10?v.toFixed(1):Math.round(v),'end')}
+  vals.forEach((v,i)=>{const bh=(H-pt-pb)*v/mx,x=pl+i*w;g+=`<rect x="${x+1}" y="${H-pb-bh}" width="${Math.max(1,w-2)}" height="${bh}" fill="${o.col?o.col(i,v):'var(--ink)'}" rx="1"><title>${esc(labels[i])}: ${v.toFixed(2)}</title></rect>`;
+    const step=W<520?Math.ceil(vals.length/8):Math.ceil(vals.length/24);if(i%step===0)g+=T(x+w/2,H-6,labels[i])});s.innerHTML=g}
+const ro=new ResizeObserver(()=>drawAll());
+let cache={};
+function drawAll(){if(!cache.h)return;drawScale();drawTime();drawDay();drawMon()}
+
+/* ---------- market readout ---------- */
+function curMarket(){return S.tr[S.sel]}
+function renderTabs(){$('#tabs').innerHTML=S.tr.map((m,i)=>{const d=(m.e-m.s)/DAY;const lab=d<3?'48h':d<8?'7 วัน':'รายเดือน';return`<button aria-pressed="${i===S.sel}" data-i="${i}">${esc(m.short)} · ${lab}</button>`}).join('')}
+function shortTitle(t){return t.replace(/^Elon Musk #? ?(of )?tweets ?/i,'').replace(/\?$/,'').replace(/, 20\d\d/,'').replace(/^in /,'')}
+function nowcast(){const m=curMarket();if(!m)return;const h=cache.h,R=cache.R,now=NOW();m.cur=m.s<=now?exact(m.s,Math.min(now,m.e)):0;
+  if(S.official[m.id]!=null&&S.live)m.cur=Math.max(m.cur,S.official[m.id]);
+  const sim=simulate(m,h,R);cache.sim=sim;const x=sim.x,n=x.length;const pr=S.prices[m.slug]||[];
+  const B=pr.map(p=>{const[lo,hi]=parseB(p.t);let c=0;for(let i=0;i<n;i++)if(x[i]>=lo&&x[i]<=hi)c++;return{...p,lo,hi,pm:c/n}}).sort((a,b)=>a.lo-b.lo);cache.B=B;
+  const q=[.1,.5,.9].map(v=>quant(Array.from(x.subarray(0,4000)),v));
+  const left=Math.max(0,m.e-now),hrs=left/HR,el=Math.max(1e-6,(Math.min(now,m.e)-m.s)/DAY);
+  const curB=B.find(b=>m.cur>=b.lo&&m.cur<=b.hi),nxt=B.find(b=>b.lo>m.cur);
+  const lastPost=[...S.recent.values()].reduce((a,p)=>p.t<now?Math.max(a,p.t):a,0)||lastFromBins(h);
+  $('#readout').innerHTML=[
+   ['ยอดตอนนี้',m.cur,curB?`อยู่ใน bucket ${curB.t}`:''],
+   ['เหลือเวลา',`<span id="cd">${fmtLeft(left)}</span>`,`ปิด ${fICT.format(new Date(m.e+1000))} (ICT) · ${fET.format(new Date(m.e+1000))} ET`],
+   ['ต้องได้อีก',nxt?nxt.lo-m.cur:'—',nxt?`เพื่อเข้า ${nxt.t} · P = ${pct(nxt?probAtLeast(x,nxt.lo):0)}`:''],
+   ['คาดการณ์ปิดที่',`${Math.round(q[1])}`,`ช่วง 80%: ${Math.round(q[0])}–${Math.round(q[2])}`,1],
+   ['อัตราในตลาดนี้',(m.cur/el).toFixed(1)+'/วัน',`แนวโน้ม 7 วัน/60 วัน ×${sim.L.toFixed(2)}`],
+   ['เงียบมาแล้ว',lastPost?((now-lastPost)/HR).toFixed(1)+' ชม.':'—',lastPost?`โพสต์ล่าสุด ${fICT.format(new Date(lastPost))}`:'']
+  ].map(([a,b,c,hot])=>`<div class="${hot?'hot':''}"><span>${a}</span><b>${b}</b><span>${c}</span></div>`).join('');
+  const thr=S.set.thr/100;
+  $('#tblB').innerHTML=`<thead><tr><th>Bucket</th><th class="n">โมเดล P</th><th class="n">ซื้อ Yes (ask)</th><th class="n">ซื้อ No (1−bid)</th><th class="n">edge ดีที่สุด</th><th class="n">EV/$1</th><th class="n">Volume</th></tr></thead><tbody>`+
+   B.filter(b=>b.pm>.001||(b.mid??0)>.01||b===curB).map(b=>{const ask=b.ask??b.mid,noP=b.bid!=null?1-b.bid:(1-(b.mid??0));const eY=ask!=null?b.pm-ask:-1,eN=noP!=null?(1-b.pm)-noP:-1;const yes=eY>=eN,e=yes?eY:eN,ev=yes?(ask>0?b.pm/ask-1:0):(noP>0?(1-b.pm)/noP-1:0);
+    return`<tr class="${e>=thr?'edge':''}"><td><b>${esc(b.t)}</b>${b.hi<m.cur?' <span class="mut sm">(ผ่านแล้ว)</span>':''}</td><td class="n">${pct(b.pm)}</td><td class="n">${c(ask)}</td><td class="n">${c(noP)}</td><td class="n ${e>=thr?'pos':'neg'}">${e>-1?(yes?'Yes ':'No ')+(e*100>0?'+':'')+(e*100).toFixed(1)+'pp':'—'}</td><td class="n ${ev>0?'pos':'neg'}">${e>-1?(ev>0?'+':'')+ev.toFixed(2):'—'}</td><td class="n">${b.vol?'$'+Math.round(b.vol).toLocaleString():''}</td></tr>`}).join('')+'</tbody>';
+  const sug=SNAP.upcoming.concat(S.launches).filter(u=>{const t=Date.parse(u.d);return t>=now-DAY&&t<=m.e}).filter(u=>u.type);
+  $('#hint').innerHTML=(sug.length?`<div class="note">ในช่วงที่เหลือของตลาดนี้มี: ${sug.map(u=>`<b>${esc(u.t)}</b> (${esc(u.type)})`).join(' · ')} → พิจารณาติ๊กปรับด้านบน</div>`:'')+(!S.live?`<div class="note">โหมด SNAPSHOT: ข้อมูลและราคา ณ ${fICT.format(new Date(Date.parse(SNAP.snapTime)))} (เวลาไทย) — เปิดหน้านี้บน GitHub Pages เพื่อดึงข้อมูลสด</div>`:'');
+  drawScale()}
+const pct=p=>(p*100).toFixed(p<.1?1:0)+'%';const c=v=>v==null?'—':(v*100).toFixed(v<.1?1:0)+'¢';
+function probAtLeast(x,k){let c=0;for(let i=0;i<x.length;i++)if(x[i]>=k)c++;return c/x.length}
+function fmtLeft(ms){const d=Math.floor(ms/DAY),h=Math.floor(ms%DAY/HR),m=Math.floor(ms%HR/6e4);return(d?d+'ว ':'')+h+'ช '+String(m).padStart(2,'0')+'น'}
+function lastFromBins(h){for(let i=h.length-1;i>=0;i--)if(h[i])return S.t0+(i+.5)*HR;return 0}
+function drawScale(){const B=cache.B;const{s,W,H}=svgBox('#figScale');if(!B||!W)return;const m=curMarket();
+  let vis=B.filter(b=>b.pm>.003||(b.ask??b.mid??0)>.02||(m.cur>=b.lo&&m.cur<=b.hi));if(!vis.length)vis=B.slice(0,6);
+  const i0=B.indexOf(vis[0]),i1=B.indexOf(vis[vis.length-1]);vis=B.slice(Math.max(0,i0-1),Math.min(B.length,i1+2));
+  const pl=8,pb=44,pt=26,w=(W-pl*2)/vis.length,mx=Math.max(...vis.map(b=>Math.max(b.pm,b.ask??b.mid??0)),.05)*1.15,y=v=>H-pb-(H-pb-pt)*v/mx;let g=`<line x1="0" x2="${W}" y1="${H-pb}" y2="${H-pb}" stroke="var(--ink)" stroke-width="2"/>`;
+  vis.forEach((b,i)=>{const x=pl+i*w,pr=b.ask??b.mid??0,isCur=m.cur>=b.lo&&m.cur<=b.hi;
+   g+=`<rect x="${x+w*.18}" y="${y(b.pm)}" width="${w*.64}" height="${H-pb-y(b.pm)}" fill="var(--ink)" opacity="${b.hi<m.cur?.25:.9}" rx="2"/>`;
+   g+=`<line x1="${x+w*.08}" x2="${x+w*.92}" y1="${y(pr)}" y2="${y(pr)}" stroke="var(--acc)" stroke-width="4" stroke-linecap="round"/>`;
+   g+=T(x+w/2,Math.min(y(b.pm),y(pr))-8,W<520?Math.round(b.pm*100)+'':pct(b.pm)+' / '+c(pr),'middle','var(--ink)',W<520?11:12);
+   g+=`<line x1="${x}" x2="${x}" y1="${H-pb}" y2="${H-pb+8}" stroke="var(--ink)"/>`+T(x+w/2,H-pb+20,b.t,'middle',isCur?'var(--acc)':'var(--mut)',W<520?10:12);
+   if(isCur)g+=T(x+w/2,H-6,'▲ ตอนนี้ '+m.cur,'middle','var(--acc)',12)});
+  s.innerHTML=g}
+
+/* ---------- averages ---------- */
+function renderAvg(){const h=cache.h,R=cache.R,now=NOW(),d=cache.daily;const k=keys(h.length);
+  const noon=[];for(let i=0;i<h.length;i++)if(k[i][1]===12&&(i===0||k[i-1][1]!==12))noon.push(S.t0+i*HR);cache.noon=noon;
+  const win=(a,b,len)=>noon.filter(t=>t>=a&&t+len*DAY<=b).map(t=>R(t,t+len*DAY));
+  const rows=[];const now0=now;
+  for(const[lab,dd]of[['7 วันล่าสุด',7],['1 เดือนล่าสุด',30],['3 เดือนล่าสุด',90],['6 เดือนล่าสุด',180],['1 ปีล่าสุด',365]]){const a=Math.max(S.t0,now0-dd*DAY),days=(now0-a)/DAY,pd=R(a,now0)/days;const w2=win(a,now0,2),w7=win(a,now0,7);
+    rows.push([lab,'xtracker',pd,w2.length?`${Math.round(quant(w2,.1))}–${Math.round(quant(w2,.9))}`:'—',w7.length>2?`${Math.round(quant(w7,.1))}–${Math.round(quant(w7,.9))}`:'—',days<dd-1?`มีข้อมูล ${Math.round(days)} วัน`:''])}
+  const wk=SNAP.weeks.map(([s,lo,hi])=>{const H2=hi??Math.round(lo*1.15);return{t:Date.parse(s+'T17:00:00Z'),pd:(lo+H2)/14,hw:(H2-lo)/14}});
+  const rs=(a,b)=>{const x=wk.filter(w=>w.t>=a&&w.t<b);return x.length?{pd:x.reduce((s,w)=>s+w.pd,0)/x.length,hw:x.reduce((s,w)=>s+w.hw,0)/x.length,n:x.length}:null};
+  for(const[lab,back,dd]of[['1 เดือน · ช่วงเดียวกันปีก่อน',365,30],['1 เดือน · ช่วงเดียวกัน 2 ปีก่อน',730,30],['3 เดือน · 2 ปีก่อน',730,90],['1 ปีเต็ม · 2 ปีก่อน→1 ปีก่อน',365,365]]){const b=now0-back*DAY,a=b-dd*DAY;
+    if(a>=S.t0){rows.push([lab,'xtracker',R(a,b)/dd,'','',''])}else{const r=rs(a,b);if(r)rows.push([lab,`ผลตลาด ${r.n} สัปดาห์`,r.pd,'','',`± ${r.hw.toFixed(1)}/วัน`])}}
+  cache.avgRows=rows;const mx=Math.max(...rows.map(r=>r[2]));
+  $('#tblAvg').innerHTML=`<thead><tr><th>ช่วง</th><th>แหล่ง</th><th class="n">ต่อวัน</th><th class="n">ต่อ 48h</th><th class="n">ต่อ 7 วัน</th><th class="n">48h p10–p90</th><th class="n">7 วัน p10–p90</th><th>เทียบ</th><th>หมายเหตุ</th></tr></thead><tbody>`+
+   rows.map(r=>`<tr><td>${esc(r[0])}</td><td class="mut sm">${esc(r[1])}</td><td class="n"><b>${r[2].toFixed(1)}</b></td><td class="n">${(r[2]*2).toFixed(0)}</td><td class="n">${(r[2]*7).toFixed(0)}</td><td class="n">${r[3]}</td><td class="n">${r[4]}</td><td style="min-width:90px"><div style="height:8px;border-radius:4px;background:var(--ink);width:${(r[2]/mx*100).toFixed(0)}%"></div></td><td class="sm mut">${esc(r[5])}</td></tr>`).join('')+'</tbody>';
+  const r30=rows[1][2],r365=rows[4][2];$('#avgTitle').textContent=`1 เดือนล่าสุด ${r30.toFixed(1)} โพสต์/วัน — ${r30>=r365?'สูงกว่า':'ต่ำกว่า'}ค่าเฉลี่ย 1 ปี ${Math.abs((r30/r365-1)*100).toFixed(0)}%`;
+  $('#avgNote').textContent='ข้อมูล 2 ปีก่อนเป็นค่าประมาณจากกลาง bucket ของตลาดรายสัปดาห์ที่ปิดแล้ว (กติกานับแบบเดียวกัน แต่ช่วงนั้นใช้ xtracker.io)'}
+
+/* ---------- time patterns ---------- */
+function drawTime(){const h=cache.h,now=NOW(),n=h.length,days=S.tw,i0=Math.max(0,n-1-days*24);const hr=new Array(24).fill(0),dsum=new Array(7).fill(0),dcnt=new Array(7).fill(0);const dm=new Map();
+  for(let i=i0;i<n-1;i++){const t=S.t0+i*HR+7*HR,dt=new Date(t),hh=dt.getUTCHours();hr[hh]+=h[i];const key=Math.floor(t/DAY);dm.set(key,(dm.get(key)||0)+h[i])}
+  const nd=(n-1-i0)/24;for(const[kk,v]of dm){const wd=(new Date(kk*DAY).getUTCDay()+6)%7;dsum[wd]+=v;dcnt[wd]++}
+  const hv=hr.map(v=>v/nd),mean=hv.reduce((a,b)=>a+b)/24;
+  bars('#figHour',hv,hv.map((_,i)=>String(i).padStart(2,'0')),{col:(i,v)=>v>mean*1.25?'var(--acc)':'var(--ink)'});
+  const dv=dsum.map((v,i)=>dcnt[i]?v/dcnt[i]:0),dmn=dv.reduce((a,b)=>a+b)/7;bars('#figDow',dv,DOW,{col:(i,v)=>v>dmn*1.08?'var(--acc)':'var(--ink)'});
+  const top=hv.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]).slice(0,5).map(x=>x[1]).sort((a,b)=>a-b),low=hv.map((v,i)=>[v,i]).sort((a,b)=>a[0]-b[0]).slice(0,4).map(x=>x[1]).sort((a,b)=>a-b);
+  $('#hourNote').textContent=`พีค (สีส้ม > 1.25× ค่าเฉลี่ย): ${top.map(x=>x+':00').join(', ')} · ต่ำสุด: ${low.map(x=>x+':00').join(', ')} น. (ICT) · 12:00 ICT = เที่ยงคืน ET, 21:00 ICT = 9 โมงเช้า ET (ช่วงฤดูหนาว)`;
+  $('#timeTitle').textContent=`ชั่วโมงพีค (ICT): ${top.map(x=>x+':00').join(' · ')}`;
+  const hm=[...Array(7)].map(()=>new Array(24).fill(0)),hc=[...Array(7)].map(()=>new Array(24).fill(0));for(let i=Math.max(0,n-1-365*24);i<n-1;i++){const dt=new Date(S.t0+i*HR+7*HR),wd=(dt.getUTCDay()+6)%7,hh=dt.getUTCHours();hm[wd][hh]+=h[i];hc[wd][hh]++}
+  const hmv=hm.map((r,a)=>r.map((v,b)=>hc[a][b]?v/hc[a][b]:0)),mx=Math.max(...hmv.flat());
+  $('#heat').innerHTML='<div class="l"></div>'+[...Array(24)].map((_,i)=>`<div class="l" style="justify-content:center">${i%3?'':i}</div>`).join('')+hmv.map((r,a)=>`<div class="l">${DOW[a]}</div>`+r.map((v,b)=>`<div title="${DOW[a]} ${b}:00 · ${v.toFixed(2)}" style="background:color-mix(in srgb,var(--acc) ${Math.round(v/mx*100)}%,var(--card))"></div>`).join('')).join('')}
+function drawMon(){const{s,W,H}=svgBox('#figMon');if(!W)return;const d=cache.daily,mm=new Map();for(const[k,v]of d){const m=k.slice(0,7);const o=mm.get(m)||[0,0];o[0]+=v;o[1]++;mm.set(m,o)}
+  const wm=new Map();for(const[s0,lo,hi]of SNAP.weeks){const m=s0.slice(0,7),H2=hi??Math.round(lo*1.15),o=wm.get(m)||[0,0];o[0]+=(lo+H2)/14;o[1]++;wm.set(m,o)}
+  const all=[];for(const[m,o]of wm)if(m<'2025-11')all.push([m,o[0]/o[1],0]);for(const[m,o]of mm)all.push([m,o[0]/o[1],1]);all.sort((a,b)=>a[0]<b[0]?-1:1);
+  bars('#figMon',all.map(a=>a[1]),all.map(a=>a[0].slice(2).replace('-','/')),{col:i=>all[i][2]?'var(--ink)':'var(--mut)'})}
+
+/* ---------- anomalies ---------- */
+function anomalies(){const d=cache.daily,v=d.map(x=>x[1]);const out=d.map(([k,n],i)=>{const a=v.slice(Math.max(0,i-14),i+14);const b=a.length>=14?median(a):NaN;return{k,n,b,r:b?n/b:NaN}});cache.anom=out;
+  const ex=SNAP.expl;const row=o=>{const e=ex[o.k];const kw=!e?keywordsFor(o.k):'';return`<tr><td class="num">${o.k}</td><td class="n"><b>${o.n}</b></td><td class="n">${Math.round(o.b)}</td><td class="n">${o.r.toFixed(2)}×</td><td>${e?esc(e.t)+(e.s?` <a class="src" href="${esc(e.s)}" target="_blank" rel="noopener">แหล่งข่าว ↗</a>`:''):(kw?'<span class="mut">คำที่พบบ่อยในโพสต์:</span> '+esc(kw):'<span class="mut">ยังไม่มีคำอธิบาย</span>')}</td></tr>`};
+  const head='<thead><tr><th>วันที่ (ET)</th><th class="n">โพสต์</th><th class="n">ฐาน</th><th class="n">เท่า</th><th>เกิดอะไรขึ้น</th></tr></thead><tbody>';
+  const ok=out.filter(o=>o.b>=10);$('#tblHi').innerHTML=head+ok.filter(o=>o.r>=1.8).sort((a,b)=>b.r-a.r).slice(0,14).map(row).join('')+'</tbody>';
+  $('#tblLo').innerHTML=head+ok.filter(o=>o.r<=.4).sort((a,b)=>a.r-b.r).slice(0,10).map(row).join('')+'</tbody>'}
+const STOP=new Set('the a an and or of to in is it this that for on with be are was as at by from you we i my our your not have has will just but so can its it’s they all more than very what about would like who one do if no yes good great true wow exactly rt https amp been get much most now new over out up when how why there their them he she his her too only also make made being some any these those me us which into then going said even still'.split(' '));
+function keywordsFor(k){const ps=[...S.recent.values()].filter(p=>fKey.format(new Date(p.t)).slice(0,10)===k);if(!ps.length)return'';const wc={};for(const p of ps)for(const w of p.c.toLowerCase().replace(/https?:\S+/g,'').match(/[a-z][a-z0-9'’]{2,}/g)||[])if(!STOP.has(w))wc[w]=(wc[w]||0)+1;return Object.entries(wc).sort((a,b)=>b[1]-a[1]).slice(0,8).map(x=>x[0]).join(', ')}
+function drawDay(){const a=(cache.anom||[]).slice(-S.dayWin);const{s,W,H}=svgBox('#figDay');if(!W||!a.length)return;const pl=34,pb=22,pt=10,mx=Math.max(...a.map(o=>o.n))*1.08,x=i=>pl+(W-pl-8)*i/(a.length-1),y=v=>H-pb-(H-pb-pt)*v/mx;let g='';
+  for(let i=0;i<4;i++){const v=mx*i/4;g+=`<line x1="${pl}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/>`+T(pl-4,y(v)+4,Math.round(v),'end')}
+  g+=`<polyline fill="none" stroke="var(--ink)" stroke-width="1.5" points="${a.map((o,i)=>x(i)+','+y(o.n)).join(' ')}"/>`;
+  g+=`<polyline fill="none" stroke="var(--mut)" stroke-dasharray="4 3" points="${a.filter(o=>o.b).map(o=>x(a.indexOf(o))+','+y(o.b)).join(' ')}"/>`;
+  a.forEach((o,i)=>{if(o.b>=10&&(o.r>=1.8||o.r<=.4))g+=`<circle cx="${x(i)}" cy="${y(o.n)}" r="4" fill="${o.r>1?'var(--acc)':'var(--bg)'}" stroke="var(--acc)" stroke-width="2"><title>${o.k}: ${o.n}</title></circle>`;if(o.k.endsWith('-01'))g+=T(x(i),H-5,o.k.slice(2,7).replace('-','/'))});
+  g+=T(W-6,pt+12,'— รายวัน   - - ฐาน 28 วัน   ● ผิดปกติ','end');s.innerHTML=g}
+
+/* ---------- events ---------- */
+function renderEvents(){$('#tblEv').innerHTML='<thead><tr><th>ประเภท</th><th class="n">วันนั้น ×ฐาน</th><th class="n">48h ±โพสต์</th><th class="n">n</th><th>ตัวอย่าง</th></tr></thead><tbody>'+EVT.map(e=>`<tr><td>${esc(e.th)}</td><td class="n">${e.r1.toFixed(2)}×</td><td class="n ${e.d48>0?'pos':''}">${e.d48>0?'+':''}${Math.round(e.d48)}</td><td class="n">${e.n}</td><td class="sm mut">${esc(e.ex)}</td></tr>`).join('')+'</tbody>';
+  const now=NOW(),up=SNAP.upcoming.concat(S.launches).filter(u=>Date.parse(u.d)>=now-DAY).sort((a,b)=>Date.parse(a.d)-Date.parse(b.d)).slice(0,14);
+  $('#tblUp').innerHTML='<thead><tr><th>วันที่</th><th>อีเวนต์</th><th>คาดผล</th></tr></thead><tbody>'+up.map(u=>{const e=EVT.find(x=>x.type===u.type);return`<tr><td class="num">${esc(u.d.slice(0,10))}${u.est?' <span class="mut sm">(ประมาณ)</span>':''}</td><td>${esc(u.t)}${u.s?` <a class="src" href="${esc(u.s)}" target="_blank" rel="noopener">↗</a>`:''}</td><td class="n">${e?(e.d48>0?'+':'')+Math.round(e.d48)+'/48h':'—'}</td></tr>`}).join('')+'</tbody>';
+  $('#chips').innerHTML=EVT.map(e=>`<label><input type="checkbox" value="${esc(e.type)}" ${S.ev.has(e.type)?'checked':''}>${esc(e.th)} <span class="mut num">${e.d48>0?'+':''}${Math.round(e.d48)}</span></label>`).join('');
+  const nw=S.news;$('#news').innerHTML=nw&&nw.items?.length?`<p class="mut">อัปเดต ${fICT.format(new Date(nw.updated))} · จาก Google News</p>`+nw.items.slice(0,12).map(i=>`<p><a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.title)}</a> <span class="mut">· ${esc(i.source||'')} · ${fICT.format(new Date(i.date))}</span></p>`).join(''):
+   `<p class="mut">ฟีดข่าวอัตโนมัติจะแสดงเมื่อโฮสต์บน GitHub (GitHub Action ดึงข่าวทุกชั่วโมง) · ระหว่างนี้: <a href="https://news.google.com/search?q=Elon%20Musk&hl=en-US" target="_blank" rel="noopener">Google News: Elon Musk</a> · <a href="https://x.com/elonmusk" target="_blank" rel="noopener">x.com/elonmusk</a> · <a href="https://www.rocketlaunch.live/?filter=spacex" target="_blank" rel="noopener">SpaceX launch schedule</a></p>`}
+function renderFeed(){const now=NOW();const ps=[...S.recent.values()].filter(p=>p.t<now).sort((a,b)=>b.t-a.t).slice(0,25);
+  $('#feed').innerHTML=ps.length?ps.map(p=>`<div><time>${fICT.format(new Date(p.t))} ICT</time>${esc(p.c)}</div>`).join(''):'<div class="mut">ยังไม่มีโพสต์ใหม่ที่ดึงมา (ต้องเปิดแบบ live)</div>';
+  const h=cache.h;let gaps=[],last=-1;for(let i=Math.max(0,h.length-24*60);i<h.length;i++)if(h[i]){if(last>=0&&i-last>1)gaps.push(i-last);last=i}
+  const lp=ps[0]?.t||lastFromBins(h);$('#silence').textContent=lp?`เงียบมา ${((now-lp)/HR).toFixed(1)} ชม. · ช่วงเงียบ ≥2 ชม. ใน 60 วันล่าสุด: มัธยฐาน ${median(gaps.filter(g=>g>=2)).toFixed(0)} ชม., p90 ${quant(gaps.filter(g=>g>=2),.9).toFixed(0)} ชม. (ช่วงที่โพสต์น้อยสุดมักอยู่ราว 16:00–20:00 ICT)`:''}
+
+/* ---------- data refresh ---------- */
+async function loadTrackings(){if(S.live){try{const u=await getJSON(`${XT}/users/elonmusk?platform=X`);const now=Date.now();
+   S.tr=u.data.trackings.filter(t=>t.isActive&&Date.parse(t.endDate)>now&&t.marketLink).map(t=>({id:t.id,title:t.title,short:shortTitle(t.title),s:Date.parse(t.startDate),e:Date.parse(t.endDate),slug:t.marketLink.split('/').filter(Boolean).pop()})).sort((a,b)=>a.e-b.e);return}catch(e){S.live=false}}
+  S.tr=SNAP.markets.map(m=>({id:m.slug,title:m.title,short:shortTitle(m.title),s:Date.parse(m.start),e:Date.parse(m.end),slug:m.slug}));for(const m of SNAP.markets)S.prices[m.slug]=m.markets.map(([t,bid,ask,mid,vol])=>({t,bid,ask,mid,vol}))}
+async function loadPrices(m){if(!S.live||!m)return;try{const j=await getJSON(`${GM}/events?slug=${encodeURIComponent(m.slug)}`);const ev=j[0];if(!ev)return;
+  S.prices[m.slug]=ev.markets.map(x=>{let op=[];try{op=JSON.parse(x.outcomePrices||'[]')}catch(e){}const n=v=>v==null||v===''?null:+v;return{t:x.groupItemTitle,bid:n(x.bestBid),ask:n(x.bestAsk),mid:op.length?+op[0]:null,vol:+(x.volume||0)}})}catch(e){}
+  try{const j=await getJSON(`${XT}/trackings/${m.id}?includeStats=true`);if(j.data?.stats?.total!=null)S.official[m.id]=j.data.stats.total}catch(e){}}
+async function loadSide(){try{const j=await getJSON('data/news.json',8000);S.news=j}catch(e){}
+  const c=store.get('etxLL');if(c&&Date.now()-c.t<HR){S.launches=c.v;return}
+  try{const j=await getJSON('data/launches.json',8000);S.launches=j.items||[]}catch(e){try{const j=await getJSON(`${LL}/launch/upcoming/?search=starship&limit=6`);S.launches=(j.results||[]).map(r=>({d:r.net,t:r.name+(r.status?.abbrev?` · ${r.status.abbrev}`:''),type:'Starship launch',est:r.status?.abbrev!=='Go'}))}catch(e){}}
+  store.set('etxLL',{t:Date.now(),v:S.launches})}
+function compute(){const h=series();cache.h=h;cache.R=mkR(h);cache.daily=daily(h)}
+function renderAll(){compute();renderTabs();nowcast();renderAvg();drawTime();drawMon();anomalies();drawDay();renderEvents();renderFeed();
+  $('#dot').className='dot'+(S.live?' live':'');$('#stat').textContent=S.live?`LIVE · อัปเดต ${fICT.format(new Date(S.last||Date.now()))} ICT`:`SNAPSHOT · ${fICT.format(new Date(Date.parse(SNAP.snapTime)))} ICT`}
+let timer;async function cycle(full){clearTimeout(timer);$('#stat').textContent='กำลังดึงข้อมูล…';
+  try{S.live=true;if(full)await tryHourlyFile();await refreshPosts();S.last=Date.now()}catch(e){S.live=false}
+  if(full||!S.tr.length){const prev=curMarket()?.slug;await loadTrackings();const k=S.tr.findIndex(m=>m.slug===prev);S.sel=k>=0?k:Math.max(0,S.tr.findIndex(m=>m.s<=NOW()))}await loadPrices(curMarket());if(full)await loadSide();renderAll();
+  timer=setTimeout(()=>cycle(false),S.set.refresh*6e4)}
+let tick=0;setInterval(()=>{const m=curMarket(),el=$('#cd');if(m&&el)el.textContent=fmtLeft(Math.max(0,m.e-NOW()));if(S.live&&++tick%3600===0)cycle(true)},1000);
+
+/* ---------- controls ---------- */
+$('#tabs').addEventListener('click',async e=>{const b=e.target.closest('button');if(!b)return;S.sel=+b.dataset.i;renderTabs();await loadPrices(curMarket());nowcast()});
+$('#tw').innerHTML=[30,90,365].map(d=>`<button aria-pressed="${d===S.tw}" data-d="${d}">${d} วัน</button>`).join('');
+$('#tw').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.tw=+b.dataset.d;[...$('#tw').children].forEach(x=>x.setAttribute('aria-pressed',x===b));drawTime()});
+$('#chips').addEventListener('change',e=>{const v=e.target.value;e.target.checked?S.ev.add(v):S.ev.delete(v);nowcast()});
+for(const[id,k]of[['#boost','boost'],['#wgt','w'],['#thr','thr']])$(id).addEventListener('change',e=>{S.set[k]=+e.target.value||0;save();nowcast()});
+$('#refresh').addEventListener('change',e=>{S.set.refresh=+e.target.value;save();cycle(false)});
+$('#btnNow').addEventListener('click',()=>cycle(true));
+for(const id of['#figScale','#figHour','#figDow','#figMon','#figDay'])ro.observe($(id));
+loadCache();$('#refresh').value=S.set.refresh;$('#wgt').value=S.set.w;$('#thr').value=S.set.thr;$('#boost').value=S.set.boost;
+S.live=false;loadTrackings().then(()=>{const i=S.tr.findIndex(m=>m.s<=NOW());S.sel=Math.max(0,i);renderAll();cycle(true)});
+}
+</script>
+</body>
+</html>
