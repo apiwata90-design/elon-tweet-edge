@@ -449,9 +449,12 @@
     }
   },
 
-  // poll is called by pg_cron with an x-poll-secret header (checked inside the function), not a JWT
+  // poll/health are called by pg_cron with an x-poll-secret header, telegram by Telegram with
+  // X-Telegram-Bot-Api-Secret-Token — both checked inside the functions, not a JWT
   "functions": {
-    "poll": { "verify_jwt": false }
+    "poll": { "verify_jwt": false },
+    "health": { "verify_jwt": false },
+    "telegram": { "verify_jwt": false }
   },
 
   "edge_runtime": {
