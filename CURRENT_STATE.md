@@ -1,13 +1,21 @@
 # CURRENT_STATE — Elon Tweet Edge
 
-_อัปเดตล่าสุด: 2026-11-27 · เฟส 1 เสร็จ · เฟส 2 เสร็จ (โมเดลฝั่ง server + สี + backtest) · หน้าเว็บเพิ่มส่วน "วันนี้" · ถัดไป: Backtest v2 + เฟส 3 (ดู [NEXT_TASKS.md](NEXT_TASKS.md))_
+_อัปเดตล่าสุด: 2026-11-27 · เฟส 1 เสร็จ · เฟส 2 เสร็จ · หน้าเว็บเพิ่มส่วน "วันนี้" · Backtest v2 เสร็จ · ถัดไป: เฟส 3 (ดู [NEXT_TASKS.md](NEXT_TASKS.md))_
 
-## ผล backtest (เฟส 2) — รายละเอียดใน [reports/backtest_2026-11-25.md](reports/backtest_2026-11-25.md)
+## ผล backtest v2 (2026-11-27) — รายละเอียดใน [reports/backtest_v2_2026-11-27.md](reports/backtest_v2_2026-11-27.md)
+- ต้นทุนสมจริงขึ้น: half-spread ตามช่วงราคา (ตารางงานวิจัย) · fee taker r·f·(1−f) r = 0.01 (gamma `feeSchedule`, culture_fees) ทั้งซื้อ/ขาย · ห้ามซื้อนอก 5–95¢ · checkpoint ชุดเดิม
+- test ($10/ไม้, 60 ตลาด): **2x +$46** (47 ไม้, CI −105…+202) · **3x +$161** (51 ไม้, CI −4…+337) · avg7d +$52 (56 ไม้, CI −215…+369) — v1: +$60 / +$185 / +$68
+- โมเดลเทียบตลาด: Brier โมเดลแย่กว่าราคาตลาดเล็กน้อย (skill −1.4% train, −2.4% test) · ราย 4 ชม. train/test สลับเครื่องหมายบ่อย
+- gate "ไม่เทรดช่วงที่โมเดลไม่ชนะตลาด" ทดสอบแล้ว **ไม่ใช้** (ปิด 3x หมด, 2x เหลือ −$16) — user เลือก 27 พ.ย.
+- spread จริง (567 quotes) แคบกว่าตารางงานวิจัยมาก (เช่น 0.10–0.20: 0.036 vs 0.13) → ตารางงานวิจัยเป็นกรณีระวัง · calibrate แล้ว 3x +$179, 2x +$38
+- DB (mode='backtest') = v2 แล้ว (ลบ v1): paper_decisions 1,888 · paper_positions 602 · price_cache 19,380
+
+## ผล backtest v1 (เฟส 2) — รายละเอียดใน [reports/backtest_2026-11-25.md](reports/backtest_2026-11-25.md)
 - 224 ตลาดที่ปิดแล้ว (48h 133, 7d 91) · train = ปิด ม.ค.–ส.ค. (164) · test = ปิด ก.ย.–พ.ย. (60)
 - checkpoint ที่เลือก: **2x = T−24.5h, T−17.5h** (ชุดดีสุดจาก train ชนะสมมติฐานบน test +$60 vs +$33) · **3x = T−16h, T−7h, T−2.5h** (สมมติฐาน เพราะชุดดีสุดจาก train แพ้บน test: −$77 vs +$185)
 - test ($10/ไม้): 2x +$60 (90% CI −106…+236) · 3x +$185 (CI +10…+371) · baseline avg7d +$68 (CI −231…+418)
 - test มีแค่ 60 ตลาด → ส่วนต่างส่วนใหญ่ยังอยู่ใน noise · มีแค่ 3x ที่ CI ทั้งช่วงเป็นบวก
-- บันทึกใน DB แล้ว (mode='backtest'): paper_decisions 1,914 · paper_positions 624 · price_cache 19,380 (เฉพาะราคาที่ agent ใช้ตัดสินใจจริง)
+- แถว v1 ใน DB ถูกแทนที่ด้วย v2 แล้ว (27 พ.ย.) · ตัวเลข v1 ยังอยู่ในรายงาน v1 และแถว "v1" ของรายงาน v2
 
 ## ใช้งานได้แล้ว
 | ส่วน | ที่อยู่ | สถานะ |
@@ -116,15 +124,16 @@ python build.py                                              # เมื่อ�
 
 ## Backtest
 ```bash
-deno run -A scripts/backtest.ts            # รายงาน → reports/backtest_<วันที่ ICT>.md (แคชราคา/โมเดลใน .cache/backtest/, gitignored)
-deno run -A scripts/backtest.ts --write    # + สร้าง .cache/backtest/sql/*.sql (paper_* mode='backtest', price_cache)
+deno run -A scripts/backtest.ts            # v2 → reports/backtest_v2_<วันที่ ICT>.md (แคชราคา/โมเดลใน .cache/backtest/, gitignored)
+deno run -A scripts/backtest.ts --write    # + สร้าง .cache/backtest/sql/*.sql: 0_delete (ลบ paper_* mode='backtest' ทั้งหมด) → insert v2 → price_cache
 for f in .cache/backtest/sql/*.sql; do npx supabase db query --remote --yes -f "$f"; done
 ```
-- อ่านโพสต์ด้วย publishable key (อ่านอย่างเดียว) · เขียน DB ผ่าน `supabase db query` (ไม่ต้องใช้ service key)
-- รันซ้ำแล้ว `--write` จะเพิ่มแถว backtest ซ้ำ → ต้องลบ `mode='backtest'` เดิมก่อน (ถามก่อนลบ)
+- อ่านโพสต์ + bid/ask สำหรับ calibrate ด้วย publishable key (อ่านอย่างเดียว) · เขียน DB ผ่าน `supabase db query` (ไม่ต้องใช้ service key)
+- รัน sql ชุดใหม่จะ**ลบแถว backtest เดิมทั้งหมด**แล้วเขียนใหม่ (ถามก่อนรัน)
+- config ใน script: `C_V2` (หลัก) · `C_V1` (จำลอง v1 ได้ตัวเลขตรงรายงานเดิม) · `C_GATE` / `C_CAL` / `C_F05` ใช้เทียบในรายงาน
 - ตลาดที่ไม่มี marketLink หา slug จากชื่อ ([_shared/slug.ts](supabase/functions/_shared/slug.ts) ใช้ทั้งใน backtest และ live)
 
 ## ค้าง / ถัดไป
 - ข้อ D (latency) ยังไม่เห็นข้อความจริงจาก poll ตัวใหม่ เพราะยังไม่มีโพสต์ใหม่ขณะที่ตลาดเหลือ < 6 ชม. → เช็กที่ข้อความ ⏱/🔔 ถัดไป
-- Backtest v2 + เฟส 3 paper trading live → รายละเอียดใน [NEXT_TASKS.md](NEXT_TASKS.md) (ต้องถาม user เรื่องแถว backtest v1 ใน DB ก่อน `--write`)
+- เฟส 3 paper trading live → รายละเอียดใน [NEXT_TASKS.md](NEXT_TASKS.md)
 - ✅ GitHub Action `hourly-data` รันตาม schedule แล้ว (มี commit `data: hourly update` 25–27 พ.ย.)
