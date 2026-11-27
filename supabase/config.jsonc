@@ -454,7 +454,8 @@
   "functions": {
     "poll": { "verify_jwt": false },
     "health": { "verify_jwt": false },
-    "telegram": { "verify_jwt": false }
+    "telegram": { "verify_jwt": false },
+    "paper": { "verify_jwt": false }
   },
 
   "edge_runtime": {

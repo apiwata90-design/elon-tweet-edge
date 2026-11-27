@@ -1,6 +1,6 @@
 # CURRENT_STATE — Elon Tweet Edge
 
-_อัปเดตล่าสุด: 2026-11-27 · เฟส 1 เสร็จ · เฟส 2 เสร็จ · หน้าเว็บเพิ่มส่วน "วันนี้" · Backtest v2 เสร็จ · ถัดไป: เฟส 3 (ดู [NEXT_TASKS.md](NEXT_TASKS.md))_
+_อัปเดตล่าสุด: 2026-11-27 · เฟส 1 เสร็จ · เฟส 2 เสร็จ · หน้าเว็บเพิ่มส่วน "วันนี้" · Backtest v2 เสร็จ · **เฟส 3 live paper trading เปิดแล้ว** (27 พ.ย.)_
 
 ## ผล backtest v2 (2026-11-27) — รายละเอียดใน [reports/backtest_v2_2026-11-27.md](reports/backtest_v2_2026-11-27.md)
 - ต้นทุนสมจริงขึ้น: half-spread ตามช่วงราคา (ตารางงานวิจัย) · fee taker r·f·(1−f) r = 0.01 (gamma `feeSchedule`, culture_fees) ทั้งซื้อ/ขาย · ห้ามซื้อนอก 5–95¢ · checkpoint ชุดเดิม
@@ -27,6 +27,7 @@ _อัปเดตล่าสุด: 2026-11-27 · เฟส 1 เสร็จ
 | Edge Function `poll` | cron `elon-poll` ทุก 30 วินาที | ✅ posts + markets + price-jump + แจ้งโพสต์ |
 | Edge Function `health` | cron `elon-health` ทุก 5 นาที | ✅ ทำงานเฉพาะตอนมีตลาดเหลือ < 4 ชม. |
 | Edge Function `telegram` | Telegram webhook | ✅ `/status` (ตอบเฉพาะ chat 1893239479) |
+| Edge Function `paper` | cron `elon-paper` ทุก 1 นาที · `elon-paper-report` ทุกวัน 01:00 UTC (08:00 ICT) | ✅ live paper trading 2x / 3x / avg7d (เฟส 3) |
 | Cron `elon-cron-cleanup` | ทุกวัน 03:17 UTC | ✅ ลบ `cron.job_run_details` เก่ากว่า 2 วัน |
 | ตาราง `posts` | backfill ตั้งแต่ 2025-11-01 | ✅ |
 
@@ -39,6 +40,8 @@ pg_cron 30s ─▶ poll ─▶ xtracker posts (10 นาที) ─upsert─▶ 
 pg_cron 5m  ─▶ health ─▶ (มีตลาด <4 ชม.) poll ≤3 นาที? · xtracker 200? · gamma 200? · ยอด posts = stats.total?
                          ─▶ ⚠️ ครั้งเดียวเมื่อเริ่มมีปัญหา · ✅ เมื่อกลับมา (ล่มไป X นาที)
 Telegram ─webhook─▶ telegram ─▶ /status
+pg_cron 1m  ─▶ paper ─▶ checkpoint ที่ถึงเวลา (state.paper.done) ─▶ gamma bid/ask + fee ─▶ paper_decisions / paper_positions (live) ─▶ Telegram
+                └─ ทุก 10 นาที: settle ไม้ของตลาดที่ resolve แล้ว · 01:00 UTC: รายงาน 1d/3d/7d/30d
 GitHub Action ชม.ละครั้ง ─▶ data/hourly.json, news.json, launches.json
 หน้าเว็บ: ดึง xtracker ตรงตามรอบรีเฟรชเสมอ (fallback) · ตลาดเหลือ <6 ชม. ดึงราคาทุก 30 วินาที
 ```
@@ -50,6 +53,9 @@ GitHub Action ชม.ละครั้ง ─▶ data/hourly.json, news.json, l
 | ⏱ ตลาดใกล้ปิด | ตลาดเหลือ < 6 ชม. + มีโพสต์ใหม่ (รวมเป็น 1 ข้อความ/ตลาด/รอบ, แสดงสูงสุด 5) | ต่อโพสต์ |
 | ⚡ ราคาขยับแรง | mid ของ bucket ใดก็ได้ในตลาดที่ active ขยับ ≥ 15pp ภายใน 5 นาที | ต่อ bucket ต่อ 15 นาที (`state.jump_alerted`) |
 | ⚠️ / ✅ ระบบ | ดูข้อ health | `state.health.down` |
+| 🟢🟡🔴 Paper ซื้อ · 💰/🔻 ขาย · ⚪ avg7d ซื้อ | agent ตัดสินใจที่ checkpoint (ไม่ส่งตอน skip/hold) | checkpoint ละครั้ง (`state.paper.done`) |
+| 🏁 Paper ตลาดปิด | settle ไม้ทุกตัวของตลาดนั้น (ถูก/ผิด, PnL) | ต่อไม้ (exit_ts) |
+| 📒 รายงาน paper | ทุกวัน 08:00 ICT | — |
 
 - ทุกบรรทัดโพสต์มี latency: `⏱ นำเข้า +x นาที` (createdAt → importedAt ของ xtracker) · `ส่ง +y นาที` (createdAt → เวลาส่ง)
 - ข้อความ 🔔 ⏱ ⚡ และ /status แสดงผลโมเดล (เฟส 2):
@@ -71,6 +77,16 @@ GitHub Action ชม.ละครั้ง ─▶ data/hourly.json, news.json, l
 - อัปเดตทุก 60 วินาที (`renderToday` ใน setInterval) และทุกโพสต์ใหม่ (Realtime → `renderAll`)
 - โค้ด: `fcDay`, `renderToday`, `slotWindow`, `renderSlotTable`, `drawToday` ใน template.html
 
+### เฟส 3: live paper trading (`paper`) — เริ่ม 2026-11-27
+- กติกา = backtest v2 (`_shared/paper.ts`): 2x T−24.5h/T−17.5h · 3x T−16h/T−7h/T−2.5h · avg7d ซื้อ Yes ตอนเปิดตลาด · $10/ไม้ · ถือได้ 1 ไม้/ตลาด/agent
+  - เข้า: edge = P ฝั่งนั้น − (ask + fee) ≥ +5pp · ask 5–95¢ · ฝั่ง No ใช้ ask_no = 1 − bid_yes
+  - ออก: (bid − fee) ≥ P + 3pp → take_profit · edge ≤ −5pp → stop_loss · ไม่งั้นถือจน settle (exit 1/0 ไม่มี fee)
+  - fee = r × f × (1−f) ต่อหุ้น · r = `feeSchedule.rate` ของ bucket (เก็บใน `state.markets[].buckets[].fee`, ตอนนี้ 0.01)
+  - ไม่ใช้ gate ปิดช่วง (user เลือก)
+- checkpoint รันครั้งเดียวใน tick แรกที่ถึงเวลา · ถ้า tick ช้ากว่า 10 นาที → บันทึก skip "เลยมาแล้ว" (ตอนเปิดระบบ checkpoint ที่ผ่านไปแล้วของตลาดปัจจุบันจะเป็น skip)
+- ยอดปัจจุบัน = xtracker stats.total (fallback นับจากตาราง posts) · โมเดล = `nowcast` 20,000 sims (ไม่ fix seed)
+- หน้าเว็บส่วน "Paper trading" (`#paper`): แท็บ Live / Backtest v2 · ตาราง 1/3/7/30 วัน/ทั้งหมด (ไม้ · ถูก · PnL · ROI) · กราฟ PnL สะสม · ไม้ที่ถืออยู่ · โหลดใหม่ทุก 5 นาที (`loadPaper`, `renderPaper`, `drawPaper`)
+
 ### Health check (A)
 - ยอดไม่ตรงต้องเกิดซ้ำ 2 รอบติดกัน (10 นาที) ถึงจะนับเป็นปัญหา เพื่อกันกรณีโพสต์ที่เพิ่งเข้ามาฝั่งใดฝั่งหนึ่งก่อน
 - ถ้าระบบอยู่ในสถานะ down อยู่แล้ว health จะยังรันต่อแม้ไม่มีตลาดเหลือ < 4 ชม. เพื่อให้ส่ง ✅ ได้
@@ -83,7 +99,7 @@ GitHub Action ชม.ละครั้ง ─▶ data/hourly.json, news.json, l
 
 ### ความปลอดภัย
 - ทุกตาราง: anon/authenticated อ่านได้อย่างเดียว เขียนได้เฉพาะ service_role
-- `poll`/`health`: header `x-poll-secret` ต้องตรงกับ Vault `poll_secret` (สุ่มสร้างในฐานข้อมูล)
+- `poll`/`health`/`paper`: header `x-poll-secret` ต้องตรงกับ Vault `poll_secret` (สุ่มสร้างในฐานข้อมูล)
 - `telegram`: header `X-Telegram-Bot-Api-Secret-Token` ต้องตรงกับ Vault `telegram_webhook_secret` (setWebhook ตั้งให้เอง) และตอบเฉพาะ chat 1893239479
 - Vault: `project_url`, `poll_secret`, `telegram_webhook_secret` · ค่าทั้งหมดไม่มีใน repo
 - หน้าเว็บมีแค่ publishable key
@@ -110,6 +126,11 @@ npx supabase db query --remote "select private.invoke_fn('health', '{\"force\":t
 npx supabase db query --remote "select private.invoke_fn('health', '{\"force\":true,\"simulate\":\"ทดสอบ\"}')"  # จำลองปัญหา
 npx supabase db query --remote "select private.invoke_fn('telegram', '{\"info\":true}')"             # สถานะ webhook
 npx supabase db query --remote "select private.invoke_fn('telegram', '{\"setup\":true}')"            # ตั้ง webhook ใหม่
+npx supabase db query --remote "select private.invoke_fn('paper', '{\"dry\":true}')"                 # paper: ถ้าตัดสินใจตอนนี้ (ไม่บันทึก) → ดูผลใน net._http_response
+npx supabase db query --remote "select private.invoke_fn('paper', '{\"dry\":true,\"telegram\":true}')" # + ส่ง 🧪 ไป Telegram
+npx supabase db query --remote "select private.invoke_fn('paper', '{\"report\":true}')"              # รายงาน paper ทันที
+$Q "select agent, market_slug, action, side, bucket, price, edge, reason, ts from paper_decisions where mode='live' order by id desc limit 20"
+$Q "select agent, market_slug, side, bucket, entry_price, exit_reason, pnl from paper_positions where mode='live' order by id desc"
 ```
 - จำลองระบบล่มจริง: `select cron.alter_job((select jobid from cron.job where jobname='elon-poll'), active := false)` รอ > 3 นาที แล้วรัน health → ⚠️ · เปลี่ยนเป็น `active := true` แล้วรัน health อีกครั้ง → ✅
 - Telegram: พิมพ์ `/status` ในแชตกับบอท
@@ -117,7 +138,7 @@ npx supabase db query --remote "select private.invoke_fn('telegram', '{\"setup\"
 ## Deploy ซ้ำ
 ```bash
 git pull                                                     # มี bot commit ทุกชั่วโมง
-npx supabase functions deploy poll health telegram --use-api # (CLI จะขอ --yes ในโหมด agent)
+npx supabase functions deploy poll health telegram paper --use-api # (CLI จะขอ --yes ในโหมด agent)
 npx supabase db push --remote                                # เมื่อมี migration ใหม่
 python build.py                                              # เมื่อแก้ template.html
 ```

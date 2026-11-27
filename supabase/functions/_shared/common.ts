@@ -11,7 +11,8 @@ export const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPA
   auth: { persistSession: false },
 });
 
-export type Bucket = { t: string; lo: number; hi: number; bid?: number | null; ask?: number | null; mid?: number | null; token?: string | null };
+/** bid/ask = Yes token top-of-book (gamma bestBid/bestAsk) · fee = taker fee rate r (gamma feeSchedule.rate, 0 when fees are off) */
+export type Bucket = { t: string; lo: number; hi: number; bid?: number | null; ask?: number | null; mid?: number | null; token?: string | null; fee?: number | null };
 export type Market = { id: string; title: string; slug: string; s: number; e: number; buckets: Bucket[] };
 
 export const iso = (ms: number) => new Date(ms).toISOString();
@@ -107,7 +108,8 @@ export async function fetchMarkets(now: number): Promise<Market[]> {
         const arr = (s: string) => { try { return JSON.parse(s || "[]"); } catch { return []; } };
         const op = arr(x.outcomePrices), tok = arr(x.clobTokenIds);
         const n = (v: unknown) => (v == null || v === "" ? null : Number(v));
-        m.buckets.push({ ...parseBucket(x.groupItemTitle), bid: n(x.bestBid), ask: n(x.bestAsk), mid: op.length ? Number(op[0]) : null, token: tok[0] ?? null });
+        const fee = x.feesEnabled === false ? 0 : n(x.feeSchedule?.rate);
+        m.buckets.push({ ...parseBucket(x.groupItemTitle), bid: n(x.bestBid), ask: n(x.bestAsk), mid: op.length ? Number(op[0]) : null, token: tok[0] ?? null, fee });
       }
     } catch (e) { console.error("gamma", m.slug, String(e)); }
     m.buckets.sort((a, b) => a.lo - b.lo);

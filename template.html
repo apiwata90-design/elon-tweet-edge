@@ -74,7 +74,7 @@ html{scroll-padding-top:56px}
     <button id="btnNow">อัปเดตเดี๋ยวนี้</button>
     <button id="btnAlert" aria-pressed="false" title="แจ้งเตือนในเบราว์เซอร์ + เสียง เมื่อมีโพสต์ใหม่ (ต้องเปิดหน้านี้ค้างไว้)">🔔 แจ้งเตือน: ปิด</button></div>
 </header>
-<nav class="nav scroll" aria-label="sections"><a href="#now">ตลาดตอนนี้</a><a href="#avg">ค่าเฉลี่ย</a><a href="#time">ช่วงเวลา</a><a href="#anom">วันผิดปกติ</a><a href="#events">อีเวนต์</a><a href="#posts">วันนี้ / โพสต์</a><a href="#method">วิธีคิด</a></nav>
+<nav class="nav scroll" aria-label="sections"><a href="#now">ตลาดตอนนี้</a><a href="#avg">ค่าเฉลี่ย</a><a href="#time">ช่วงเวลา</a><a href="#anom">วันผิดปกติ</a><a href="#events">อีเวนต์</a><a href="#posts">วันนี้ / โพสต์</a><a href="#paper">Paper trading</a><a href="#method">วิธีคิด</a></nav>
 
 <section class="band" id="now">
   <div class="tabs" id="tabs" role="group" aria-label="เลือกตลาด"></div>
@@ -138,6 +138,15 @@ html{scroll-padding-top:56px}
     <div class="scroll"><table id="tblToday" style="min-width:340px"></table></div></div>
   <h3>โพสต์ล่าสุด</h3><p class="mut sm" id="silence"></p>
   <div class="card feed" id="feed"></div>
+</section>
+
+<section class="band" id="paper">
+  <h2>Paper trading</h2>
+  <p class="mut sm">agent จำลองซื้อ-ขาย $10/ไม้ ไม่ใช่เงินจริง · 2x ตัดสินใจที่ T−24.5h, T−17.5h · 3x ที่ T−16h, T−7h, T−2.5h (T = เวลาปิดตลาด) · เข้าเมื่อ edge ≥ +5pp หลังหัก fee, ราคา 5–95¢ · avg7d = ซื้อ Yes ตอนเปิดตลาดตามค่าเฉลี่ย 7 วัน · Live ใช้ bid/ask จริงจาก Polymarket</p>
+  <div class="tabs" id="paperTabs" role="group" aria-label="ชุดข้อมูล paper trading"><button data-m="live" aria-pressed="true">Live</button><button data-m="backtest" aria-pressed="false">Backtest v2</button></div>
+  <div class="scroll"><table id="tblPaper" style="min-width:560px"></table></div>
+  <div class="card"><h3>PnL สะสม (ไม้ที่ปิดแล้ว)</h3><div class="fig s" id="figPaper"><svg></svg></div><p class="sm mut" id="paperNote"></p></div>
+  <div id="paperOpenWrap"><h3>ถืออยู่ตอนนี้</h3><div class="scroll"><table id="tblOpen" style="min-width:480px"></table></div></div>
 </section>
 
 <section class="band" id="method">
@@ -208,7 +217,7 @@ function bars(id,vals,labels,o={}){const{s,W,H}=svgBox(id);if(!W)return;const pl
     const step=W<520?Math.ceil(vals.length/8):Math.ceil(vals.length/24);if(i%step===0)g+=T(x+w/2,H-6,labels[i])});s.innerHTML=g}
 const ro=new ResizeObserver(()=>drawAll());
 let cache={};
-function drawAll(){if(!cache.h)return;drawScale();drawTime();drawDay();drawMon();drawToday()}
+function drawAll(){drawPaper();if(!cache.h)return;drawScale();drawTime();drawDay();drawMon();drawToday()}
 
 /* ---------- market readout ---------- */
 function curMarket(){return S.tr[S.sel]}
@@ -375,6 +384,48 @@ function drawToday(){const td=cache.today;const{s,W,H}=svgBox('#figToday');if(!t
     const lp=pts[pts.length-1],win=td.mode==='win';if(!win)g+=`<line x1="${lp[0]}" y1="${lp[1]}" x2="${W-pr}" y2="${yc(live.mean)}" stroke="var(--acc)" stroke-width="2" stroke-dasharray="5 4" opacity=".7"/>`;
     pts.forEach(p=>{g+=`<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="var(--acc)"/>`});g+=win?T(lp[0]-4,lp[1]-8,'สะสม '+lp[2].toFixed(1)+'/วัน','end','var(--acc)',12):T(lp[0]-4,lp[1]-8,'สะสม '+lp[2],'end','var(--acc)',12)+T(W-pr-2,yc(live.mean)-8,'~'+Math.round(live.mean),'end','var(--acc)',12)}
   s.innerHTML=g}
+/* ---------- paper trading (paper_positions ผ่าน publishable key) ---------- */
+const PAPER={mode:'live',rows:{},at:{},err:null};
+const AG=[['2x','var(--acc)','','T−24.5h, T−17.5h'],['3x','var(--ink)','','T−16h, T−7h, T−2.5h'],['avg7d','var(--mut)','5 4','ซื้อตอนเปิดตลาด']];
+const usd=v=>`${v<0?'−':'+'}$${Math.abs(v).toFixed(2)}`;
+const slugTitle=s=>String(s).replace(/^elon-musk-of-tweets-/,'').replace(/-20\d\d$/,'').split('-').join(' ');
+async function loadPaper(mode){const out=[];for(let off=0;;off+=1000){const r=await fetch(`${SB_URL}/rest/v1/paper_positions?select=agent,market_slug,market_type,side,bucket,entry_ts,entry_price,shares,exit_ts,exit_price,exit_reason,pnl&mode=eq.${mode}&order=entry_ts.asc&limit=1000&offset=${off}`,{headers:{apikey:SB_KEY}});
+  if(!r.ok)throw Error('HTTP '+r.status);const j=await r.json();out.push(...j);if(j.length<1000)break}PAPER.rows[mode]=out;PAPER.at[mode]=Date.now()}
+async function refreshPaper(force){const m=PAPER.mode;if(!force&&PAPER.rows[m]&&Date.now()-PAPER.at[m]<5*6e4)return;try{await loadPaper(m);PAPER.err=null}catch(e){PAPER.err=String(e)}renderPaper()}
+function renderPaper(){const mode=PAPER.mode,rows=PAPER.rows[mode],live=mode==='live',now=Date.now();
+  $('#paperTabs').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.m===mode));
+  if(!rows){$('#tblPaper').innerHTML=`<tbody><tr><td class="mut">${PAPER.err?'โหลดไม่ได้: '+esc(PAPER.err):'กำลังโหลด…'}</td></tr></tbody>`;$('#tblOpen').innerHTML='';drawPaper();return}
+  const since=d=>r=>Date.parse(r.exit_ts)>=now-d*DAY;
+  const W=live?[['1 วัน',since(1)],['3 วัน',since(3)],['7 วัน',since(7)],['30 วัน',since(30)],['ทั้งหมด',()=>true]]
+    :[['ทั้งหมด (ม.ค.–พ.ย.)',()=>true],['test (ก.ย.–พ.ย.)',r=>Date.parse(r.exit_ts)>=Date.UTC(2026,8,1)]];
+  const cell=rs=>{const n=rs.length;if(!n)return'<td class="n mut">—</td>';const p=rs.reduce((s,r)=>s+(+r.pnl||0),0),w=rs.filter(r=>+r.pnl>0).length;
+    return`<td class="n"><b class="${p>0?'pos':''}">${usd(p)}</b><br><span class="sm mut">${n} ไม้ · ถูก ${Math.round(w/n*100)}% · ROI ${(p/(n*10)*100).toFixed(0)}%</span></td>`};
+  $('#tblPaper').innerHTML=`<thead><tr><th>agent</th>${W.map(w=>`<th class="n">${w[0]}</th>`).join('')}${live?'<th class="n">ถืออยู่</th>':''}</tr></thead><tbody>`+
+    AG.map(([a,,,d])=>{const mine=rows.filter(r=>r.agent===a),cl=mine.filter(r=>r.exit_ts);
+      return`<tr><td><b>${a}</b><br><span class="sm mut">${d}</span></td>${W.map(w=>cell(cl.filter(w[1]))).join('')}${live?`<td class="n">${mine.length-cl.length}</td>`:''}</tr>`}).join('')+'</tbody>';
+  const open=live?rows.filter(r=>!r.exit_ts):[];$('#paperOpenWrap').hidden=!live;
+  $('#tblOpen').innerHTML=open.length?'<thead><tr><th>agent</th><th>ตลาด</th><th>ฝั่ง</th><th class="n">ต้นทุน</th><th class="n">หุ้น</th><th>ซื้อเมื่อ (ICT)</th></tr></thead><tbody>'+
+    open.map(r=>`<tr><td>${esc(r.agent)}</td><td>${esc(slugTitle(r.market_slug))} <span class="mut sm">${esc(r.market_type)}</span></td><td>${r.side==='yes'?'Yes':'No'} <b>${esc(r.bucket)}</b></td><td class="n">${(r.entry_price*100).toFixed(1)}¢</td><td class="n">${(+r.shares).toFixed(1)}</td><td class="num">${fICT.format(new Date(r.entry_ts))}</td></tr>`).join('')+'</tbody>'
+    :'<tbody><tr><td class="mut">ไม่มีไม้ที่ถืออยู่</td></tr></tbody>';
+  $('#paperNote').textContent=live?`ไม้ทั้งหมด ${rows.length} (ปิดแล้ว ${rows.length-open.length}) · อัปเดต ${fICT.format(new Date(PAPER.at[mode]))} ICT · โหลดใหม่ทุก 5 นาที`
+    :`ผลจำลองย้อนหลัง v2 (${rows.length} ไม้) · train = ม.ค.–ส.ค., test = ก.ย.–พ.ย. · รายละเอียดใน reports/backtest_v2`;
+  drawPaper()}
+function drawPaper(){const{s,W,H}=svgBox('#figPaper');if(!W)return;const rows=PAPER.rows[PAPER.mode]||[];
+  const cl=rows.filter(r=>r.exit_ts).map(r=>({a:r.agent,t:Date.parse(r.exit_ts),v:+r.pnl||0})).sort((x,y)=>x.t-y.t);
+  if(!cl.length){s.innerHTML=T(W/2,H/2,PAPER.mode==='live'?'ยังไม่มีไม้ที่ปิดแล้ว':'ไม่มีข้อมูล');return}
+  const t0=cl[0].t,t1=Math.max(cl[cl.length-1].t,PAPER.mode==='live'?Date.now():0);
+  const ser=AG.map(([a,c,dash])=>{let cum=0;const pts=[[t0,0]];for(const r of cl)if(r.a===a){cum+=r.v;pts.push([r.t,cum])}if(PAPER.mode==='live')pts.push([t1,cum]);return{a,c,dash,pts}});
+  const ys=ser.flatMap(x=>x.pts.map(p=>p[1])),lo=Math.min(0,...ys),hi=Math.max(0,...ys),pad=(hi-lo||1)*.08,y0=lo-pad,y1=hi+pad;
+  const pl=52,pr=108,pt=14,pb=24,x=t=>pl+(W-pl-pr)*(t1>t0?(t-t0)/(t1-t0):1),y=v=>pt+(H-pt-pb)*(1-(v-y0)/(y1-y0));let g='';
+  for(let i=0;i<=4;i++){const v=y0+(y1-y0)*i/4;g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/>`+T(pl-6,y(v)+4,(v<0?'−$':'$')+Math.abs(v).toFixed(0),'end')}
+  g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(0)}" y2="${y(0)}" stroke="var(--mut)"/>`;
+  const fd=new Intl.DateTimeFormat('th-TH',{timeZone:'Asia/Bangkok',day:'numeric',month:'short'});
+  for(let i=0;i<=3;i++){const t=t0+(t1-t0)*i/3;g+=T(x(t),H-6,fd.format(new Date(t)),i===0?'start':i===3?'end':'middle')}
+  const labs=[];for(const sr of ser){if(sr.pts.length<2)continue;const d=sr.pts.map((p,i)=>i?`H${x(p[0]).toFixed(1)}V${y(p[1]).toFixed(1)}`:`M${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join('');
+    g+=`<path d="${d}" fill="none" stroke="${sr.c}" stroke-width="2.2"${sr.dash?` stroke-dasharray="${sr.dash}"`:''}/>`;const lp=sr.pts[sr.pts.length-1];labs.push({y:y(lp[1]),t:`${sr.a} ${usd(lp[1])}`,c:sr.c})}
+  labs.sort((a,b)=>a.y-b.y);for(let i=1;i<labs.length;i++)labs[i].y=Math.max(labs[i].y,labs[i-1].y+14);
+  for(const l of labs)g+=T(W-pr+6,l.y+4,l.t,'start',l.c,12);s.innerHTML=g}
+
 /* ---------- data refresh ---------- */
 async function loadTrackings(){if(S.live){try{const u=await getJSON(`${XT}/users/elonmusk?platform=X`);const now=Date.now();
    S.tr=u.data.trackings.filter(t=>t.isActive&&Date.parse(t.endDate)>now&&t.marketLink).map(t=>({id:t.id,title:t.title,short:shortTitle(t.title),s:Date.parse(t.startDate),e:Date.parse(t.endDate),slug:t.marketLink.split('/').filter(Boolean).pop()})).sort((a,b)=>a.e-b.e);return}catch(e){S.live=false}}
@@ -426,7 +477,9 @@ $('#refresh').addEventListener('change',e=>{S.set.refresh=+e.target.value;save()
 $('#btnNow').addEventListener('click',()=>cycle(true));
 $('#slotTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.slotW=+b.dataset.w;renderToday()});
 $('#btnAlert').addEventListener('click',async()=>{S.set.alert=!S.set.alert;if(S.set.alert){beep();if('Notification'in window&&Notification.permission==='default'){try{await Notification.requestPermission()}catch(e){}}}save();setAlertBtn()});
-for(const id of['#figScale','#figHour','#figDow','#figMon','#figDay','#figToday'])ro.observe($(id));
+for(const id of['#figScale','#figHour','#figDow','#figMon','#figDay','#figToday','#figPaper'])ro.observe($(id));
+$('#paperTabs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;PAPER.mode=b.dataset.m;renderPaper();refreshPaper()});
+refreshPaper(true);setInterval(()=>{if(!document.hidden&&PAPER.mode==='live')refreshPaper()},6e4);
 loadCache();$('#refresh').value=S.set.refresh;$('#wgt').value=S.set.w;$('#thr').value=S.set.thr;$('#boost').value=S.set.boost;
 setAlertBtn();
 S.live=false;loadTrackings().then(()=>{const i=S.tr.findIndex(m=>m.s<=NOW());S.sel=Math.max(0,i);renderAll();cycle(true);startRealtime()});
