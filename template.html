@@ -74,7 +74,7 @@ html{scroll-padding-top:56px}
     <button id="btnNow">อัปเดตเดี๋ยวนี้</button>
     <button id="btnAlert" aria-pressed="false" title="แจ้งเตือนในเบราว์เซอร์ + เสียง เมื่อมีโพสต์ใหม่ (ต้องเปิดหน้านี้ค้างไว้)">🔔 แจ้งเตือน: ปิด</button></div>
 </header>
-<nav class="nav scroll" aria-label="sections"><a href="#now">ตลาดตอนนี้</a><a href="#avg">ค่าเฉลี่ย</a><a href="#time">ช่วงเวลา</a><a href="#anom">วันผิดปกติ</a><a href="#events">อีเวนต์</a><a href="#posts">โพสต์ล่าสุด</a><a href="#method">วิธีคิด</a></nav>
+<nav class="nav scroll" aria-label="sections"><a href="#now">ตลาดตอนนี้</a><a href="#avg">ค่าเฉลี่ย</a><a href="#time">ช่วงเวลา</a><a href="#anom">วันผิดปกติ</a><a href="#events">อีเวนต์</a><a href="#posts">วันนี้ / โพสต์</a><a href="#method">วิธีคิด</a></nav>
 
 <section class="band" id="now">
   <div class="tabs" id="tabs" role="group" aria-label="เลือกตลาด"></div>
@@ -128,7 +128,13 @@ html{scroll-padding-top:56px}
 </section>
 
 <section class="band" id="posts">
-  <h2>โพสต์ล่าสุด</h2><p class="mut sm" id="silence"></p>
+  <h2 id="todayTitle">วันนี้</h2>
+  <p class="mut sm">นับตามวันเวลาไทย (00:00–24:00 ICT – Indochina Time) · คาดการณ์ = ยอดที่มีแล้ว + ช่วงเวลาที่เหลือของ 60 วันก่อน × แนวโน้ม 7 วัน/60 วัน · ตัวเลขที่ "ตั้ง" ใช้เฉพาะข้อมูลก่อนเวลานั้น</p>
+  <div class="read" id="todayRead"></div>
+  <div class="card"><h3>ราย 3 ชั่วโมง · วันนี้</h3><div class="fig s" id="figToday"><svg></svg></div>
+    <p class="sm mut">แท่งดำ = โพสต์จริง · แท่งส้ม = ช่วงที่กำลังเดินอยู่ · กรอบเทา = ค่าปกติ (เฉลี่ย 60 วัน ช่วงเวลาเดียวกัน) · เส้น = ยอดสะสม (ประ = คาดการณ์ถึงสิ้นวัน)</p>
+    <div class="scroll"><table id="tblToday" style="min-width:340px"></table></div></div>
+  <h3>โพสต์ล่าสุด</h3><p class="mut sm" id="silence"></p>
   <div class="card feed" id="feed"></div>
 </section>
 
@@ -200,7 +206,7 @@ function bars(id,vals,labels,o={}){const{s,W,H}=svgBox(id);if(!W)return;const pl
     const step=W<520?Math.ceil(vals.length/8):Math.ceil(vals.length/24);if(i%step===0)g+=T(x+w/2,H-6,labels[i])});s.innerHTML=g}
 const ro=new ResizeObserver(()=>drawAll());
 let cache={};
-function drawAll(){if(!cache.h)return;drawScale();drawTime();drawDay();drawMon()}
+function drawAll(){if(!cache.h)return;drawScale();drawTime();drawDay();drawMon();drawToday()}
 
 /* ---------- market readout ---------- */
 function curMarket(){return S.tr[S.sel]}
@@ -309,6 +315,49 @@ function renderFeed(){const now=NOW();const ps=[...S.recent.values()].filter(p=>
   const h=cache.h;let gaps=[],last=-1;for(let i=Math.max(0,h.length-24*60);i<h.length;i++)if(h[i]){if(last>=0&&i-last>1)gaps.push(i-last);last=i}
   const lp=ps[0]?.t||lastFromBins(h);$('#silence').textContent=lp?`เงียบมา ${((now-lp)/HR).toFixed(1)} ชม. · ช่วงเงียบ ≥2 ชม. ใน 60 วันล่าสุด: มัธยฐาน ${median(gaps.filter(g=>g>=2)).toFixed(0)} ชม., p90 ${quant(gaps.filter(g=>g>=2),.9).toFixed(0)} ชม. (ช่วงที่โพสต์น้อยสุดมักอยู่ราว 16:00–20:00 ICT)`:''}
 
+
+/* ---------- วันนี้ (ICT): ยอดสะสม, คาดการณ์ตั้ง 12:00/18:00, ราย 3 ชม. ---------- */
+const ICT=7*HR,SLOT=3*HR,ANCH=[12,18];
+const dayStartICT=ms=>Math.floor((ms+ICT)/DAY)*DAY-ICT;
+const hhmm=ms=>{const d=new Date(ms+ICT);return String(d.getUTCHours()).padStart(2,'0')+':'+String(d.getUTCMinutes()).padStart(2,'0')};
+/* คาดการณ์ยอดทั้งวัน [ds, ds+DAY) โดยใช้ข้อมูลก่อน cut เท่านั้น (analog 60 วัน × แนวโน้ม) */
+function fcDay(R,ds,cut,cur){const de=ds+DAY;if(cut>=de){const v=R(ds,de);return{cur:v,mean:v,lo:v,hi:v,L:1}}
+  if(cur==null)cur=R(ds,cut);const an=[];for(let k=1;k<=60;k++)an.push(R(cut-k*DAY,de-k*DAY));
+  const l7=R(cut-7*DAY,cut)/7,l60=R(cut-60*DAY,cut)/60,L=1+S.set.w*((l60?l7/l60:1)-1),rem=an.map(a=>a*L);
+  return{cur,mean:cur+rem.reduce((a,b)=>a+b,0)/rem.length,lo:cur+quant(rem,.1),hi:cur+quant(rem,.9),L}}
+function renderToday(){if(!cache.R)return;const R=cache.R,now=NOW(),ds=dayStartICT(now),cur=exact(ds,now);
+  const live=fcDay(R,ds,now,cur),gray=v=>`<span class="mut" style="font-size:.55em;font-weight:400"> (ตอนนี้ ${Math.round(v)})</span>`;
+  const anc=ANCH.map(hh=>{const t=ds+hh*HR;return{hh,t,f:now>=t?fcDay(R,ds,t):null}});
+  const typNow=(()=>{let a=0;for(let k=1;k<=60;k++)a+=R(ds-k*DAY,now-k*DAY);return a/60})();
+  const yd=ds-DAY,ydAct=R(yd,ds),ydA=ANCH.map(hh=>Math.round(fcDay(R,yd,yd+hh*HR).mean));
+  const dstr=new Intl.DateTimeFormat('th-TH',{timeZone:'Asia/Bangkok',weekday:'short',day:'numeric',month:'short'}).format(new Date(now));
+  $('#todayTitle').textContent=`วันนี้ (${dstr}) โพสต์แล้ว ${cur} โพสต์`+(anc[1].f?` · คาดทั้งวัน ~${Math.round(anc[1].f.mean)}`:anc[0].f?` · คาดทั้งวัน ~${Math.round(anc[0].f.mean)}`:'');
+  $('#todayRead').innerHTML=[
+   ['วันนี้โพสต์แล้ว',`${cur}`,`ถึง ${hhmm(now)} น. · ค่าปกติ ณ เวลานี้ ${typNow.toFixed(0)}`],
+   ...anc.map(a=>a.f?[`คาดการณ์ (ตั้ง ${a.hh}:00 น.)`,`${Math.round(a.f.mean)}${gray(live.mean)}`,`ตอนตั้งมี ${a.f.cur} · ช่วง 80%: ${Math.round(a.f.lo)}–${Math.round(a.f.hi)}`,1]
+                     :[`คาดการณ์ (ตั้ง ${a.hh}:00 น.)`,`รอ ${a.hh}:00${gray(live.mean)}`,`ตอนนี้ช่วง 80%: ${Math.round(live.lo)}–${Math.round(live.hi)}`]),
+   ['เมื่อวาน (ตรวจความแม่น)',`${ydAct}`,`คาดไว้ 12:00 → ${ydA[0]} · 18:00 → ${ydA[1]}`]
+  ].map(([a,b,c,hot])=>`<div class="${hot?'hot':''}"><span>${a}</span><b>${b}</b><span>${c}</span></div>`).join('');
+  const rows=[];let cum=0,cumT=0;for(let i=0;i<8;i++){const a=ds+i*SLOT,b=a+SLOT,st=now>=b?'done':now>=a?'now':'next';
+    const n=st==='next'?null:exact(a,Math.min(b,now));let typ=0;for(let k=1;k<=60;k++)typ+=R(a-k*DAY,b-k*DAY);typ/=60;
+    if(n!=null)cum+=n;cumT+=typ;rows.push({i,a,st,n,typ,cum:n!=null?cum:null,cumT})}
+  cache.today={rows,cur,live,ds,now};
+  $('#tblToday').innerHTML='<thead><tr><th>ช่วง</th><th class="n">โพสต์</th><th class="n">ปกติ</th><th class="n">เทียบ</th><th class="n">สะสม</th><th class="n">สะสมปกติ</th></tr></thead><tbody>'+
+   rows.map(r=>{const lab=`${String(r.i*3).padStart(2,'0')}–${String(r.i*3+3).padStart(2,'0')} น.`+(r.st==='now'?' ●':'');const d=r.n!=null&&r.st==='done'&&r.typ>0?r.n/r.typ:null;
+    return`<tr><td class="num">${lab}</td><td class="n"><b>${r.n??'—'}</b></td><td class="n">${r.typ.toFixed(1)}</td><td class="n ${d!=null&&d>=1.3?'pos':''}">${d!=null?d.toFixed(2)+'×':r.st==='now'?'…':''}</td><td class="n">${r.cum??'—'}</td><td class="n">${r.cumT.toFixed(0)}</td></tr>`}).join('')+'</tbody>';
+  drawToday()}
+function drawToday(){const td=cache.today;const{s,W,H}=svgBox('#figToday');if(!td||!W)return;const{rows,live}=td;
+  const pl=34,pr=40,pb=24,pt=18,w=(W-pl-pr)/8,mx=Math.max(...rows.map(r=>Math.max(r.n||0,r.typ)),1)*1.2,cmx=Math.max(live.hi,rows[7].cumT,td.cur,1)*1.08;
+  const y=v=>H-pb-(H-pb-pt)*v/mx,yc=v=>H-pb-(H-pb-pt)*v/cmx;let g='';
+  for(let i=0;i<4;i++){const v=mx*i/4;g+=`<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/>`+T(pl-4,y(v)+4,Math.round(v),'end')+T(W-pr+4,yc(cmx*i/4)+4,Math.round(cmx*i/4),'start')}
+  rows.forEach(r=>{const x=pl+r.i*w;g+=`<rect x="${x+w*.12}" y="${y(r.typ)}" width="${w*.76}" height="${H-pb-y(r.typ)}" fill="none" stroke="var(--mut)" stroke-dasharray="3 3" rx="2"/>`;
+    if(r.n!=null){g+=`<rect x="${x+w*.2}" y="${y(r.n)}" width="${w*.6}" height="${H-pb-y(r.n)}" fill="${r.st==='now'?'var(--acc)':'var(--ink)'}" rx="2"><title>${r.n} โพสต์</title></rect>`+T(x+w/2,y(Math.max(r.n,r.typ))-5,r.n,'middle','var(--ink)',12)}
+    g+=T(x+w/2,H-6,W<520?String(r.i*3):`${String(r.i*3).padStart(2,'0')}:00`)});
+  const pts=rows.filter(r=>r.cum!=null).map(r=>{const end=Math.min(td.now,r.a+SLOT);return[pl+((end-td.ds)/SLOT)*w,yc(r.cum),r.cum]});
+  if(pts.length){g+=`<polyline fill="none" stroke="var(--acc)" stroke-width="2.5" points="${pl},${yc(0)} ${pts.map(p=>p[0]+','+p[1]).join(' ')}"/>`;
+    const lp=pts[pts.length-1];g+=`<line x1="${lp[0]}" y1="${lp[1]}" x2="${W-pr}" y2="${yc(live.mean)}" stroke="var(--acc)" stroke-width="2" stroke-dasharray="5 4" opacity=".7"/>`;
+    pts.forEach(p=>{g+=`<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="var(--acc)"/>`});g+=T(lp[0]-4,lp[1]-8,'สะสม '+lp[2],'end','var(--acc)',12)+T(W-pr-2,yc(live.mean)-8,'~'+Math.round(live.mean),'end','var(--acc)',12)}
+  s.innerHTML=g}
 /* ---------- data refresh ---------- */
 async function loadTrackings(){if(S.live){try{const u=await getJSON(`${XT}/users/elonmusk?platform=X`);const now=Date.now();
    S.tr=u.data.trackings.filter(t=>t.isActive&&Date.parse(t.endDate)>now&&t.marketLink).map(t=>({id:t.id,title:t.title,short:shortTitle(t.title),s:Date.parse(t.startDate),e:Date.parse(t.endDate),slug:t.marketLink.split('/').filter(Boolean).pop()})).sort((a,b)=>a.e-b.e);return}catch(e){S.live=false}}
@@ -321,13 +370,13 @@ async function loadSide(){try{const j=await getJSON('data/news.json',8000);S.new
   try{const j=await getJSON('data/launches.json',8000);S.launches=j.items||[]}catch(e){try{const j=await getJSON(`${LL}/launch/upcoming/?search=starship&limit=6`);S.launches=(j.results||[]).map(r=>({d:r.net,t:r.name+(r.status?.abbrev?` · ${r.status.abbrev}`:''),type:'Starship launch',est:r.status?.abbrev!=='Go'}))}catch(e){}}
   store.set('etxLL',{t:Date.now(),v:S.launches})}
 function compute(){const h=series();cache.h=h;cache.R=mkR(h);cache.daily=daily(h)}
-function renderAll(){compute();renderTabs();nowcast();renderAvg();drawTime();drawMon();anomalies();drawDay();renderEvents();renderFeed();setStat()}
+function renderAll(){compute();renderTabs();nowcast();renderAvg();drawTime();drawMon();anomalies();drawDay();renderEvents();renderToday();renderFeed();setStat()}
 function setStat(){$('#dot').className='dot'+(S.live?' live':'');$('#stat').textContent=S.live?`LIVE${RT.on?' · REALTIME':''} · อัปเดต ${fICT.format(new Date(S.last||Date.now()))} ICT`:`SNAPSHOT · ${fICT.format(new Date(Date.parse(SNAP.snapTime)))} ICT`}
 let timer;async function cycle(full){clearTimeout(timer);$('#stat').textContent='กำลังดึงข้อมูล…';
   try{S.live=true;if(full)await tryHourlyFile();await refreshPosts();S.last=Date.now()}catch(e){S.live=false}
   if(full||!S.tr.length){const prev=curMarket()?.slug;await loadTrackings();const k=S.tr.findIndex(m=>m.slug===prev);S.sel=k>=0?k:Math.max(0,S.tr.findIndex(m=>m.s<=NOW()))}await loadPrices(curMarket());if(full)await loadSide();renderAll();
   timer=setTimeout(()=>cycle(false),S.set.refresh*6e4)}
-let tick=0;setInterval(()=>{const m=curMarket(),el=$('#cd');if(m&&el)el.textContent=fmtLeft(Math.max(0,m.e-NOW()));if(S.live&&++tick%3600===0)cycle(true)},1000);
+let tick=0;setInterval(()=>{const m=curMarket(),el=$('#cd');if(m&&el)el.textContent=fmtLeft(Math.max(0,m.e-NOW()));tick++;if(S.live&&tick%3600===0)cycle(true);if(tick%60===0&&cache.R)renderToday()},1000);
 
 /* ---------- realtime (Supabase) + fast prices ----------
    Supabase ใช้ได้ → โพสต์ใหม่เข้ามาทันทีผ่าน Realtime · ใช้ไม่ได้ → ยังดึง xtracker ตรงตามรอบรีเฟรชเดิม (cycle) */
@@ -359,7 +408,7 @@ for(const[id,k]of[['#boost','boost'],['#wgt','w'],['#thr','thr']])$(id).addEvent
 $('#refresh').addEventListener('change',e=>{S.set.refresh=+e.target.value;save();cycle(false)});
 $('#btnNow').addEventListener('click',()=>cycle(true));
 $('#btnAlert').addEventListener('click',async()=>{S.set.alert=!S.set.alert;if(S.set.alert){beep();if('Notification'in window&&Notification.permission==='default'){try{await Notification.requestPermission()}catch(e){}}}save();setAlertBtn()});
-for(const id of['#figScale','#figHour','#figDow','#figMon','#figDay'])ro.observe($(id));
+for(const id of['#figScale','#figHour','#figDow','#figMon','#figDay','#figToday'])ro.observe($(id));
 loadCache();$('#refresh').value=S.set.refresh;$('#wgt').value=S.set.w;$('#thr').value=S.set.thr;$('#boost').value=S.set.boost;
 setAlertBtn();
 S.live=false;loadTrackings().then(()=>{const i=S.tr.findIndex(m=>m.s<=NOW());S.sel=Math.max(0,i);renderAll();cycle(true);startRealtime()});

@@ -1,6 +1,6 @@
 # CURRENT_STATE — Elon Tweet Edge
 
-_อัปเดตล่าสุด: 2026-11-25 · เฟส 1 เสร็จ · เฟส 2 เสร็จ (โมเดลฝั่ง server + สี + backtest) · เฟส 3 รอ user ดูผล backtest_
+_อัปเดตล่าสุด: 2026-11-27 · เฟส 1 เสร็จ · เฟส 2 เสร็จ (โมเดลฝั่ง server + สี + backtest) · หน้าเว็บเพิ่มส่วน "วันนี้" · ถัดไป: Backtest v2 + เฟส 3 (ดู [NEXT_TASKS.md](NEXT_TASKS.md))_
 
 ## ผล backtest (เฟส 2) — รายละเอียดใน [reports/backtest_2026-11-25.md](reports/backtest_2026-11-25.md)
 - 224 ตลาดที่ปิดแล้ว (48h 133, 7d 91) · train = ปิด ม.ค.–ส.ค. (164) · test = ปิด ก.ย.–พ.ย. (60)
@@ -50,6 +50,14 @@ GitHub Action ชม.ละครั้ง ─▶ data/hourly.json, news.json, l
   - ไอคอนตาม edge Yes = P − ask: 🟢🟢 ≥ +10pp · 🟢 +5..+10 · 🟡 −5..+5 · 🔴 −10..−5 · 🔴🔴 ≤ −10
 - โมเดลฝั่ง server: [supabase/functions/_shared/model.ts](supabase/functions/_shared/model.ts) (analog 60 วัน, w = 0.5, 20,000 sims) ใช้ร่วมกับ backtest · ผลตรงกับ `simulate()` ใน template ทุก sim (ทดสอบด้วย seed เดียวกัน) · input = `hourly_counts()` 100 วันจากตาราง posts
 - หน้าเว็บ: แถวในตาราง bucket ระบายสีตามระดับเดียวกัน (เฉพาะแถวที่ P หรือราคา ≥ 3%) · โมเดลของหน้าเว็บยังอยู่ใน template.html (อัลกอริทึมเดียวกัน)
+
+### หน้าเว็บ: ส่วน "วันนี้" ใน #posts (2026-11-27)
+- หัวข้อ: ยอดวันนี้ตามวัน ICT (00:00–24:00) + คาดทั้งวัน · เมนูเปลี่ยนเป็น "วันนี้ / โพสต์"
+- การ์ด 4 ใบ: โพสต์แล้ว (เทียบค่าปกติ ณ เวลานี้) · คาดการณ์ตั้ง 12:00 · ตั้ง 18:00 (ใช้เฉพาะข้อมูลก่อนเวลานั้น + ค่าปัจจุบันสีเทา) · เมื่อวาน (จริง vs ที่คาดไว้)
+- คาดการณ์ = ยอดที่มีแล้ว + ช่วงเวลาที่เหลือของ 60 วันก่อน × แนวโน้ม 7 วัน/60 วัน (น้ำหนัก `S.set.w`) · ช่วง 80% = p10–p90
+- กราฟ + ตารางราย 3 ชม.: โพสต์ | ปกติ | เทียบ (×) | สะสม | สะสมปกติ · ช่วงที่ ≥ 1.3× เป็นสีส้ม
+- อัปเดตทุก 60 วินาที (`renderToday` ใน setInterval) และทุกโพสต์ใหม่ (Realtime → `renderAll`)
+- โค้ด: `fcDay`, `renderToday`, `drawToday` ใน template.html
 
 ### Health check (A)
 - ยอดไม่ตรงต้องเกิดซ้ำ 2 รอบติดกัน (10 นาที) ถึงจะนับเป็นปัญหา เพื่อกันกรณีโพสต์ที่เพิ่งเข้ามาฝั่งใดฝั่งหนึ่งก่อน
@@ -114,5 +122,5 @@ for f in .cache/backtest/sql/*.sql; do npx supabase db query --remote --yes -f "
 
 ## ค้าง / ถัดไป
 - ข้อ D (latency) ยังไม่เห็นข้อความจริงจาก poll ตัวใหม่ เพราะยังไม่มีโพสต์ใหม่ขณะที่ตลาดเหลือ < 6 ชม. → เช็กที่ข้อความ ⏱/🔔 ถัดไป
-- เฟส 3: paper trading live (agent 2x = T−24.5h/T−17.5h, 3x = T−16h/T−7h/T−2.5h, avg7d) → **รอ user ดูผล backtest ก่อน**
-- GitHub Action `hourly-data`: ยังไม่เห็นรอบที่รันตาม schedule (มีแต่รอบที่กดรันเอง) → เช็กอีกครั้ง
+- Backtest v2 + เฟส 3 paper trading live → รายละเอียดใน [NEXT_TASKS.md](NEXT_TASKS.md) (ต้องถาม user เรื่องแถว backtest v1 ใน DB ก่อน `--write`)
+- ✅ GitHub Action `hourly-data` รันตาม schedule แล้ว (มี commit `data: hourly update` 25–27 พ.ย.)
